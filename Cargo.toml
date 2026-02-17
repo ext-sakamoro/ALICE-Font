@@ -1,0 +1,24 @@
+[package]
+name = "alice-font"
+version = "0.1.0"
+edition = "2021"
+authors = ["Moroya Sakamoto"]
+description = "Parametric metafont renderer — 40-byte parameters → infinite-resolution SDF glyphs"
+license = "MIT"
+repository = "https://github.com/ext-sakamoro/ALICE-Font"
+keywords = ["font", "sdf", "parametric", "typography", "no_std"]
+categories = ["no-std", "rendering", "graphics"]
+
+[features]
+default = []
+std = []
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.bench]
+inherits = "release"
