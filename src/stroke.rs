@@ -23,10 +23,12 @@ pub struct Point2 {
 impl Point2 {
     pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
 
+    #[inline(always)]
     pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
 
+    #[inline(always)]
     pub fn lerp(self, other: Self, t: f32) -> Self {
         Self {
             x: self.x + (other.x - self.x) * t,
@@ -34,40 +36,49 @@ impl Point2 {
         }
     }
 
+    #[inline(always)]
     pub fn distance(self, other: Self) -> f32 {
         let dx = self.x - other.x;
         let dy = self.y - other.y;
         fast_sqrt_stroke(dx * dx + dy * dy)
     }
 
+    #[inline(always)]
     pub fn length(self) -> f32 {
         fast_sqrt_stroke(self.x * self.x + self.y * self.y)
     }
 
+    #[inline(always)]
     pub fn normalize(self) -> Self {
         let len = self.length();
         if len < 1e-10 { return Self::ZERO; }
-        Self { x: self.x / len, y: self.y / len }
+        let inv_len = 1.0 / len;
+        Self { x: self.x * inv_len, y: self.y * inv_len }
     }
 
     /// Normal (perpendicular, 90° CCW)
+    #[inline(always)]
     pub fn normal(self) -> Self {
         Self { x: -self.y, y: self.x }
     }
 
+    #[inline(always)]
     pub fn scale(self, s: f32) -> Self {
         Self { x: self.x * s, y: self.y * s }
     }
 
+    #[inline(always)]
     pub fn add(self, other: Self) -> Self {
         Self { x: self.x + other.x, y: self.y + other.y }
     }
 
+    #[inline(always)]
     pub fn sub(self, other: Self) -> Self {
         Self { x: self.x - other.x, y: self.y - other.y }
     }
 
     /// Apply italic slant transform
+    #[inline(always)]
     pub fn slant(self, angle: f32) -> Self {
         // Shear: x' = x + y * tan(angle)
         Self { x: self.x + self.y * tan_approx(angle), y: self.y }
@@ -101,6 +112,7 @@ impl PenModel {
     }
 
     /// Pen half-width at a given stroke direction angle
+    #[inline(always)]
     pub fn half_width_at_angle(&self, direction_angle: f32) -> f32 {
         let relative = direction_angle - self.pen_angle;
         let sin_val = sin_approx_stroke(relative);
@@ -108,6 +120,7 @@ impl PenModel {
     }
 
     /// Pen half-width at stroke parameter t given tangent direction
+    #[inline(always)]
     pub fn half_width(&self, tangent: Point2) -> f32 {
         let angle = atan2_approx(tangent.y, tangent.x);
         self.half_width_at_angle(angle)
@@ -131,12 +144,16 @@ impl Stroke {
 
     /// Straight line as degenerate cubic
     pub fn line(start: Point2, end: Point2) -> Self {
-        let t1 = start.lerp(end, 1.0 / 3.0);
-        let t2 = start.lerp(end, 2.0 / 3.0);
+        // Pre-computed reciprocals for 1/3 and 2/3
+        const ONE_THIRD: f32 = 1.0 / 3.0;
+        const TWO_THIRDS: f32 = 2.0 / 3.0;
+        let t1 = start.lerp(end, ONE_THIRD);
+        let t2 = start.lerp(end, TWO_THIRDS);
         Self { p0: start, p1: t1, p2: t2, p3: end }
     }
 
     /// Position at parameter t ∈ [0, 1]
+    #[inline(always)]
     pub fn position(&self, t: f32) -> Point2 {
         let t2 = t * t;
         let t3 = t2 * t;
@@ -153,6 +170,7 @@ impl Stroke {
     }
 
     /// Tangent (first derivative) at parameter t
+    #[inline(always)]
     pub fn tangent(&self, t: f32) -> Point2 {
         let mt = 1.0 - t;
         let mt2 = mt * mt;
@@ -172,8 +190,9 @@ impl Stroke {
     pub fn arc_length(&self, steps: usize) -> f32 {
         let mut length = 0.0f32;
         let mut prev = self.position(0.0);
+        let inv_steps = 1.0 / steps as f32;
         for i in 1..=steps {
-            let t = i as f32 / steps as f32;
+            let t = i as f32 * inv_steps;
             let curr = self.position(t);
             length += prev.distance(curr);
             prev = curr;
@@ -243,6 +262,7 @@ impl SerifBracket {
     }
 }
 
+#[inline(always)]
 fn fast_sqrt_stroke(x: f32) -> f32 {
     if x <= 0.0 { return 0.0; }
     let half = 0.5 * x;
@@ -264,6 +284,7 @@ fn fast_sqrt_stroke(x: f32) -> f32 {
     x * y  // x * (1/√x) = √x
 }
 
+#[inline(always)]
 fn sin_approx_stroke(x: f32) -> f32 {
     let pi = core::f32::consts::PI;
     let mut x = x % (2.0 * pi);
@@ -272,27 +293,32 @@ fn sin_approx_stroke(x: f32) -> f32 {
     if x > pi { x -= pi; }
     let num = 16.0 * x * (pi - x);
     let den = 5.0 * pi * pi - 4.0 * x * (pi - x);
-    sign * num / den
+    // Multiply by reciprocal: den is always non-zero for x in [0, pi]
+    sign * num * (1.0 / den)
 }
 
+#[inline(always)]
 fn tan_approx(x: f32) -> f32 {
     let s = sin_approx_stroke(x);
     let c = sin_approx_stroke(x + core::f32::consts::FRAC_PI_2);
     if c.abs() < 1e-6 { return 0.0; }
-    s / c
+    // Multiply by reciprocal to avoid division
+    s * (1.0 / c)
 }
 
+#[inline(always)]
 fn atan2_approx(y: f32, x: f32) -> f32 {
     let pi = core::f32::consts::PI;
     if x.abs() < 1e-10 && y.abs() < 1e-10 { return 0.0; }
     if x.abs() < 1e-10 {
-        return if y > 0.0 { pi / 2.0 } else { -pi / 2.0 };
+        return if y > 0.0 { pi * 0.5 } else { pi * -0.5 };
     }
     let ax = if x < 0.0 { -x } else { x };
     let ay = if y < 0.0 { -y } else { y };
     let min = if ax < ay { ax } else { ay };
     let max = if ax > ay { ax } else { ay };
-    let a = min / max;
+    // Multiply by reciprocal: max is always > 0 here (both ax, ay >= 0, max = larger)
+    let a = min * (1.0 / max);
     let s = a * a;
     let r = ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
     let r = if ay > ax { core::f32::consts::FRAC_PI_2 - r } else { r };

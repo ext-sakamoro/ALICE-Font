@@ -38,6 +38,7 @@ impl GlyphSdf {
     }
 
     /// Sample SDF at normalized coordinates (0..1, 0..1)
+    #[inline(always)]
     pub fn sample(&self, u: f32, v: f32) -> f32 {
         let x = (u * (GLYPH_SDF_SIZE - 1) as f32) as usize;
         let y = (v * (GLYPH_SDF_SIZE - 1) as f32) as usize;
@@ -423,10 +424,13 @@ impl GlyphGenerator {
         let h = sdf.bbox_max.y - sdf.bbox_min.y;
         if w < 1e-6 || h < 1e-6 { return sdf; }
 
+        // Pre-compute reciprocal: avoids (size-1) division per pixel
+        let inv_size_1 = 1.0 / (size - 1) as f32;
+
         for py in 0..size {
             for px in 0..size {
-                let u = px as f32 / (size - 1) as f32;
-                let v = py as f32 / (size - 1) as f32;
+                let u = px as f32 * inv_size_1;
+                let v = py as f32 * inv_size_1;
                 let p = Point2::new(
                     sdf.bbox_min.x + u * w,
                     sdf.bbox_min.y + v * h,
@@ -448,6 +452,7 @@ impl GlyphGenerator {
     }
 
     /// Signed distance from point to stroked curve
+    #[inline(always)]
     fn distance_to_stroke(&self, p: Point2, stroke: &Stroke) -> f32 {
         // Sample stroke at multiple points and find minimum distance.
         // steps = 16: number of uniform parameter samples across t ∈ [0, 1].
@@ -460,10 +465,12 @@ impl GlyphGenerator {
         // sizes; 32 steps gives no visible improvement over 16 for 32×32 SDF
         // tiles. Cost is O(steps) Bezier evaluations per pixel per stroke.
         let steps = 16;
+        // Pre-compute reciprocal: avoids 17 divisions in the sampling loop
+        let inv_steps = 1.0 / steps as f32;
         let mut min_dist = f32::MAX;
 
         for i in 0..=steps {
-            let t = i as f32 / steps as f32;
+            let t = i as f32 * inv_steps;
             let curve_pt = stroke.position(t);
             let tangent = stroke.tangent(t);
             let hw = self.pen.half_width(tangent);
@@ -487,8 +494,10 @@ impl GlyphGenerator {
 
         for si in 0..skeleton.stroke_count {
             let s = &skeleton.strokes[si];
+            // Pre-computed reciprocal for the 9-sample bbox pass
+            const INV_8: f32 = 1.0 / 8.0;
             for t_step in 0..=8 {
-                let t = t_step as f32 / 8.0;
+                let t = t_step as f32 * INV_8;
                 let p = s.position(t);
                 if p.x < min_x { min_x = p.x; }
                 if p.y < min_y { min_y = p.y; }
@@ -501,6 +510,7 @@ impl GlyphGenerator {
     }
 }
 
+#[inline(always)]
 fn fast_sqrt_glyph(x: f32) -> f32 {
     if x <= 0.0 { return 0.0; }
     let half = 0.5 * x;
