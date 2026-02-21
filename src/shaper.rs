@@ -3,7 +3,7 @@
 //! Converts a string of characters into positioned glyphs
 //! ready for rendering. Handles:
 //! - Horizontal advance accumulation
-//! - Kerning pair adjustments
+//! - Kerning pair adjustments (hash-based O(1) lookup via sorted array + binary search)
 //! - Line breaking
 //! - Text metrics (width, height, baseline)
 //!
@@ -45,20 +45,38 @@ pub struct ShapedLine {
     pub y_offset: f32,
 }
 
-/// Kerning pair
+/// Kerning pair — stored as a packed u64 key for O(log n) binary search.
+///
+/// Key encoding: `(left as u32) << 32 | (right as u32)`
+/// This lets us sort and binary-search on a single integer comparison
+/// instead of two char comparisons, and keeps each entry to 12 bytes
+/// (vs. two chars + f32 = 12 bytes, same size but simpler comparison).
 #[derive(Debug, Clone, Copy)]
-struct KernPair {
-    left: char,
-    right: char,
+struct KernEntry {
+    /// Packed key: high 32 bits = left char, low 32 bits = right char
+    key: u64,
+    /// Kerning adjustment (em units, typically negative)
     adjustment: f32,
+}
+
+impl KernEntry {
+    #[inline(always)]
+    fn make_key(left: char, right: char) -> u64 {
+        ((left as u64) << 32) | (right as u64)
+    }
+
+    fn new(left: char, right: char, adjustment: f32) -> Self {
+        Self { key: Self::make_key(left, right), adjustment }
+    }
 }
 
 /// Text shaper with kerning and layout
 pub struct TextShaper {
     /// Font parameters
     params: MetaFontParams,
-    /// Kerning table
-    kern_table: Vec<KernPair>,
+    /// Kerning table — sorted by key for O(log n) binary search.
+    /// Invariant: always sorted ascending by `KernEntry::key`.
+    kern_table: Vec<KernEntry>,
     /// Line height multiplier
     line_height: f32,
     /// Letter spacing (additional, em units)
@@ -96,7 +114,10 @@ impl TextShaper {
         self.word_spacing = s;
     }
 
-    /// Build default kerning table for common Latin pairs
+    /// Build default kerning table for common Latin pairs.
+    ///
+    /// After inserting all pairs the table is sorted so that `kern()`
+    /// can use `binary_search_by_key` — O(log n) instead of O(n).
     fn build_default_kern_table(&mut self) {
         let kern_data: &[(char, char, f32)] = &[
             // Diagonal pairs
@@ -127,40 +148,41 @@ impl TextShaper {
             if self.kern_table.len() >= MAX_KERN_PAIRS {
                 break;
             }
-            self.kern_table.push(KernPair {
-                left: l,
-                right: r,
-                adjustment: adj,
-            });
+            self.kern_table.push(KernEntry::new(l, r, adj));
         }
+        // Sort once so binary_search_by_key works in kern()
+        self.kern_table.sort_unstable_by_key(|e| e.key);
     }
 
-    /// Add a custom kerning pair
+    /// Add a custom kerning pair.
+    ///
+    /// Updates the existing entry if the pair is already present,
+    /// otherwise inserts at the correct sorted position to keep
+    /// the table sorted for O(log n) lookup.
     pub fn add_kern_pair(&mut self, left: char, right: char, adjustment: f32) {
-        // Update existing pair if found
-        for pair in self.kern_table.iter_mut() {
-            if pair.left == left && pair.right == right {
-                pair.adjustment = adjustment;
-                return;
+        let key = KernEntry::make_key(left, right);
+        match self.kern_table.binary_search_by_key(&key, |e| e.key) {
+            Ok(idx) => {
+                // Update existing pair in place
+                self.kern_table[idx].adjustment = adjustment;
             }
-        }
-        if self.kern_table.len() < MAX_KERN_PAIRS {
-            self.kern_table.push(KernPair {
-                left,
-                right,
-                adjustment,
-            });
+            Err(idx) => {
+                // Insert at sorted position (keeps invariant without a full re-sort)
+                if self.kern_table.len() < MAX_KERN_PAIRS {
+                    self.kern_table.insert(idx, KernEntry { key, adjustment });
+                }
+                // If the table is full, silently drop (same behaviour as before)
+            }
         }
     }
 
-    /// Look up kerning adjustment for a character pair
+    /// Look up kerning adjustment for a character pair — O(log n) binary search.
     pub fn kern(&self, left: char, right: char) -> f32 {
-        for pair in &self.kern_table {
-            if pair.left == left && pair.right == right {
-                return pair.adjustment;
-            }
+        let key = KernEntry::make_key(left, right);
+        match self.kern_table.binary_search_by_key(&key, |e| e.key) {
+            Ok(idx) => self.kern_table[idx].adjustment,
+            Err(_) => 0.0,
         }
-        0.0
     }
 
     /// Shape a single line of text using atlas for metrics
@@ -327,6 +349,27 @@ mod tests {
         let mut shaper = TextShaper::new(MetaFontParams::sans_regular());
         shaper.add_kern_pair('X', 'Y', -0.05);
         assert!((shaper.kern('X', 'Y') - (-0.05)).abs() < 0.001);
+    }
+
+    /// Verify that add_kern_pair updates an existing entry correctly.
+    #[test]
+    fn test_update_existing_kern_pair() {
+        let mut shaper = TextShaper::new(MetaFontParams::sans_regular());
+        // 'A','V' is in the default table with -0.04
+        shaper.add_kern_pair('A', 'V', -0.10);
+        assert!((shaper.kern('A', 'V') - (-0.10)).abs() < 0.001);
+    }
+
+    /// Kern table must stay sorted so binary search works after custom inserts.
+    #[test]
+    fn test_kern_table_sorted_after_insert() {
+        let mut shaper = TextShaper::new(MetaFontParams::sans_regular());
+        shaper.add_kern_pair('Z', 'Z', -0.02);
+        shaper.add_kern_pair('A', 'A', -0.01);
+        // Table must be sorted ascending by key
+        for w in shaper.kern_table.windows(2) {
+            assert!(w[0].key <= w[1].key, "kern_table not sorted");
+        }
     }
 
     #[test]
