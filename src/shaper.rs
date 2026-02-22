@@ -13,8 +13,8 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use crate::param::MetaFontParams;
 use crate::atlas::SdfAtlas;
+use crate::param::MetaFontParams;
 
 /// Maximum kerning pairs in table
 const MAX_KERN_PAIRS: usize = 64;
@@ -66,7 +66,10 @@ impl KernEntry {
     }
 
     fn new(left: char, right: char, adjustment: f32) -> Self {
-        Self { key: Self::make_key(left, right), adjustment }
+        Self {
+            key: Self::make_key(left, right),
+            adjustment,
+        }
     }
 }
 
@@ -120,7 +123,7 @@ impl TextShaper {
     /// can use `binary_search_by_key` — O(log n) instead of O(n).
     fn build_default_kern_table(&mut self) {
         let kern_data: &[(char, char, f32)] = &[
-            // Diagonal pairs
+            // Diagonal uppercase pairs
             ('A', 'V', -0.04),
             ('A', 'W', -0.03),
             ('A', 'Y', -0.04),
@@ -129,14 +132,54 @@ impl TextShaper {
             ('W', 'A', -0.03),
             ('Y', 'A', -0.04),
             ('T', 'A', -0.04),
-            // Round + straight
-            ('T', 'o', -0.03),
+            // T + lowercase
             ('T', 'a', -0.03),
             ('T', 'e', -0.03),
+            ('T', 'i', -0.02),
+            ('T', 'o', -0.03),
+            ('T', 'r', -0.02),
+            ('T', 'u', -0.02),
+            ('T', 'y', -0.02),
+            ('T', '.', -0.04),
+            ('T', ',', -0.04),
+            // Y + lowercase
+            ('Y', 'a', -0.03),
+            ('Y', 'e', -0.03),
+            ('Y', 'i', -0.02),
+            ('Y', 'o', -0.03),
+            ('Y', 'u', -0.02),
+            // V + lowercase
+            ('V', 'a', -0.02),
+            ('V', 'e', -0.02),
+            ('V', 'i', -0.01),
+            ('V', 'o', -0.02),
+            // W + lowercase
+            ('W', 'a', -0.02),
+            ('W', 'e', -0.02),
+            ('W', 'i', -0.01),
+            ('W', 'o', -0.02),
+            // P + lowercase/punctuation
+            ('P', 'a', -0.02),
+            ('P', 'o', -0.02),
+            ('P', '.', -0.04),
+            ('P', ',', -0.04),
+            // F + lowercase/punctuation
+            ('F', 'a', -0.02),
+            ('F', 'e', -0.02),
+            ('F', 'o', -0.02),
+            ('F', '.', -0.03),
+            ('F', ',', -0.03),
+            // L + uppercase
             ('L', 'T', -0.03),
             ('L', 'V', -0.03),
             ('L', 'Y', -0.03),
-            // Lowercase
+            ('L', 'W', -0.02),
+            ('L', 'O', -0.02),
+            // A + lowercase diagonal
+            ('A', 'v', -0.02),
+            ('A', 'w', -0.02),
+            ('A', 'y', -0.02),
+            // Lowercase pairs
             ('r', 'a', -0.01),
             ('r', 'o', -0.01),
             ('f', 'a', -0.01),
@@ -400,7 +443,7 @@ mod tests {
         let mut atlas = make_atlas();
         let line = shaper.shape_line("A B", &mut atlas);
         assert_eq!(line.glyphs.len(), 2); // Spaces aren't glyphs
-        // B should be further right than A's advance
+                                          // B should be further right than A's advance
         assert!(line.glyphs[1].x > line.glyphs[0].advance);
     }
 

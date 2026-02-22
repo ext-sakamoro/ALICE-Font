@@ -63,7 +63,11 @@ impl SdfAtlas {
     ///
     /// Total texture size: (dim × GLYPH_SDF_SIZE) × (dim × GLYPH_SDF_SIZE)
     pub fn new(dim: usize, params: MetaFontParams) -> Self {
-        let dim = if dim > MAX_ATLAS_DIM { MAX_ATLAS_DIM } else { dim };
+        let dim = if dim > MAX_ATLAS_DIM {
+            MAX_ATLAS_DIM
+        } else {
+            dim
+        };
         let tex_size = dim * GLYPH_SDF_SIZE;
         Self {
             dim,
@@ -119,12 +123,10 @@ impl SdfAtlas {
     pub fn lookup(&mut self, ch: char) -> Option<&AtlasEntry> {
         self.clock += 1;
         let clock = self.clock;
-        for entry in self.entries.iter_mut() {
-            if let Some(ref mut e) = entry {
-                if e.codepoint == ch {
-                    e.last_used = clock;
-                    return Some(e);
-                }
+        for e in self.entries.iter_mut().flatten() {
+            if e.codepoint == ch {
+                e.last_used = clock;
+                return Some(e);
             }
         }
         None
@@ -136,12 +138,10 @@ impl SdfAtlas {
         let clock = self.clock;
 
         // Check if already cached
-        for entry in self.entries.iter_mut() {
-            if let Some(ref mut e) = entry {
-                if e.codepoint == ch {
-                    e.last_used = clock;
-                    return *e;
-                }
+        for e in self.entries.iter_mut().flatten() {
+            if e.codepoint == ch {
+                e.last_used = clock;
+                return *e;
             }
         }
 
@@ -229,14 +229,7 @@ impl SdfAtlas {
 
     /// Get atlas entry without updating LRU (read-only peek)
     pub fn peek(&self, ch: char) -> Option<&AtlasEntry> {
-        for entry in self.entries.iter() {
-            if let Some(ref e) = entry {
-                if e.codepoint == ch {
-                    return Some(e);
-                }
-            }
-        }
-        None
+        self.entries.iter().flatten().find(|e| e.codepoint == ch)
     }
 
     /// Check if a character is cached

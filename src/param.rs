@@ -156,8 +156,16 @@ impl MetaFontParams {
     pub fn encode(&self) -> [u8; 40] {
         let mut buf = [0u8; 40];
         let fields = [
-            self.weight, self.width, self.serif, self.contrast, self.slant,
-            self.x_height, self.cap_height, self.ascender, self.descender, self.roundness,
+            self.weight,
+            self.width,
+            self.serif,
+            self.contrast,
+            self.slant,
+            self.x_height,
+            self.cap_height,
+            self.ascender,
+            self.descender,
+            self.roundness,
         ];
         for (i, f) in fields.iter().enumerate() {
             let bytes = f.to_le_bytes();
@@ -175,9 +183,15 @@ impl MetaFontParams {
             fields[i] = f32::from_le_bytes(bytes);
         }
         Self {
-            weight: fields[0], width: fields[1], serif: fields[2],
-            contrast: fields[3], slant: fields[4], x_height: fields[5],
-            cap_height: fields[6], ascender: fields[7], descender: fields[8],
+            weight: fields[0],
+            width: fields[1],
+            serif: fields[2],
+            contrast: fields[3],
+            slant: fields[4],
+            x_height: fields[5],
+            cap_height: fields[6],
+            ascender: fields[7],
+            descender: fields[8],
             roundness: fields[9],
         }
     }

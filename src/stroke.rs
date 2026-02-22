@@ -51,37 +51,63 @@ impl Point2 {
     #[inline(always)]
     pub fn normalize(self) -> Self {
         let len = self.length();
-        if len < 1e-10 { return Self::ZERO; }
+        if len < 1e-10 {
+            return Self::ZERO;
+        }
         let inv_len = 1.0 / len;
-        Self { x: self.x * inv_len, y: self.y * inv_len }
+        Self {
+            x: self.x * inv_len,
+            y: self.y * inv_len,
+        }
     }
 
     /// Normal (perpendicular, 90° CCW)
     #[inline(always)]
     pub fn normal(self) -> Self {
-        Self { x: -self.y, y: self.x }
+        Self {
+            x: -self.y,
+            y: self.x,
+        }
     }
 
     #[inline(always)]
     pub fn scale(self, s: f32) -> Self {
-        Self { x: self.x * s, y: self.y * s }
-    }
-
-    #[inline(always)]
-    pub fn add(self, other: Self) -> Self {
-        Self { x: self.x + other.x, y: self.y + other.y }
-    }
-
-    #[inline(always)]
-    pub fn sub(self, other: Self) -> Self {
-        Self { x: self.x - other.x, y: self.y - other.y }
+        Self {
+            x: self.x * s,
+            y: self.y * s,
+        }
     }
 
     /// Apply italic slant transform
     #[inline(always)]
     pub fn slant(self, angle: f32) -> Self {
         // Shear: x' = x + y * tan(angle)
-        Self { x: self.x + self.y * tan_approx(angle), y: self.y }
+        Self {
+            x: self.x + self.y * tan_approx(angle),
+            y: self.y,
+        }
+    }
+}
+
+impl core::ops::Add for Point2 {
+    type Output = Self;
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self {
+        Self {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+
+impl core::ops::Sub for Point2 {
+    type Output = Self;
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self {
+        Self {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
     }
 }
 
@@ -149,7 +175,12 @@ impl Stroke {
         const TWO_THIRDS: f32 = 2.0 / 3.0;
         let t1 = start.lerp(end, ONE_THIRD);
         let t2 = start.lerp(end, TWO_THIRDS);
-        Self { p0: start, p1: t1, p2: t2, p3: end }
+        Self {
+            p0: start,
+            p1: t1,
+            p2: t2,
+            p3: end,
+        }
     }
 
     /// Position at parameter t ∈ [0, 1]
@@ -162,10 +193,14 @@ impl Stroke {
         let mt3 = mt2 * mt;
 
         Point2 {
-            x: mt3 * self.p0.x + 3.0 * mt2 * t * self.p1.x
-                + 3.0 * mt * t2 * self.p2.x + t3 * self.p3.x,
-            y: mt3 * self.p0.y + 3.0 * mt2 * t * self.p1.y
-                + 3.0 * mt * t2 * self.p2.y + t3 * self.p3.y,
+            x: mt3 * self.p0.x
+                + 3.0 * mt2 * t * self.p1.x
+                + 3.0 * mt * t2 * self.p2.x
+                + t3 * self.p3.x,
+            y: mt3 * self.p0.y
+                + 3.0 * mt2 * t * self.p1.y
+                + 3.0 * mt * t2 * self.p2.y
+                + t3 * self.p3.y,
         }
     }
 
@@ -224,10 +259,10 @@ impl Stroke {
     pub fn translate(&self, dx: f32, dy: f32) -> Self {
         let offset = Point2::new(dx, dy);
         Self {
-            p0: self.p0.add(offset),
-            p1: self.p1.add(offset),
-            p2: self.p2.add(offset),
-            p3: self.p3.add(offset),
+            p0: self.p0 + offset,
+            p1: self.p1 + offset,
+            p2: self.p2 + offset,
+            p3: self.p3 + offset,
         }
     }
 }
@@ -257,14 +292,16 @@ impl SerifBracket {
 
     /// Generate serif as a stroke
     pub fn to_stroke(&self) -> Stroke {
-        let end = self.base.add(self.direction.scale(self.length));
+        let end = self.base + self.direction.scale(self.length);
         Stroke::line(self.base, end)
     }
 }
 
 #[inline(always)]
 fn fast_sqrt_stroke(x: f32) -> f32 {
-    if x <= 0.0 { return 0.0; }
+    if x <= 0.0 {
+        return 0.0;
+    }
     let half = 0.5 * x;
     let i = f32::to_bits(x);
     // Quake III Arena magic constant for fast inverse square root (1/√x).
@@ -281,16 +318,20 @@ fn fast_sqrt_stroke(x: f32) -> f32 {
     let y = f32::from_bits(i);
     let y = y * (1.5 - half * y * y); // Newton–Raphson iteration 1
     let y = y * (1.5 - half * y * y); // Newton–Raphson iteration 2
-    x * y  // x * (1/√x) = √x
+    x * y // x * (1/√x) = √x
 }
 
 #[inline(always)]
 fn sin_approx_stroke(x: f32) -> f32 {
     let pi = core::f32::consts::PI;
     let mut x = x % (2.0 * pi);
-    if x < 0.0 { x += 2.0 * pi; }
+    if x < 0.0 {
+        x += 2.0 * pi;
+    }
     let sign = if x > pi { -1.0 } else { 1.0 };
-    if x > pi { x -= pi; }
+    if x > pi {
+        x -= pi;
+    }
     let num = 16.0 * x * (pi - x);
     let den = 5.0 * pi * pi - 4.0 * x * (pi - x);
     // Multiply by reciprocal: den is always non-zero for x in [0, pi]
@@ -301,7 +342,9 @@ fn sin_approx_stroke(x: f32) -> f32 {
 fn tan_approx(x: f32) -> f32 {
     let s = sin_approx_stroke(x);
     let c = sin_approx_stroke(x + core::f32::consts::FRAC_PI_2);
-    if c.abs() < 1e-6 { return 0.0; }
+    if c.abs() < 1e-6 {
+        return 0.0;
+    }
     // Multiply by reciprocal to avoid division
     s * (1.0 / c)
 }
@@ -309,7 +352,9 @@ fn tan_approx(x: f32) -> f32 {
 #[inline(always)]
 fn atan2_approx(y: f32, x: f32) -> f32 {
     let pi = core::f32::consts::PI;
-    if x.abs() < 1e-10 && y.abs() < 1e-10 { return 0.0; }
+    if x.abs() < 1e-10 && y.abs() < 1e-10 {
+        return 0.0;
+    }
     if x.abs() < 1e-10 {
         return if y > 0.0 { pi * 0.5 } else { pi * -0.5 };
     }
@@ -320,10 +365,18 @@ fn atan2_approx(y: f32, x: f32) -> f32 {
     // Multiply by reciprocal: max is always > 0 here (both ax, ay >= 0, max = larger)
     let a = min * (1.0 / max);
     let s = a * a;
-    let r = ((-0.0464964749 * s + 0.15931422) * s - 0.327622764) * s * a + a;
-    let r = if ay > ax { core::f32::consts::FRAC_PI_2 - r } else { r };
+    let r = ((-0.046_496_475 * s + 0.159_314_22) * s - 0.327_622_76) * s * a + a;
+    let r = if ay > ax {
+        core::f32::consts::FRAC_PI_2 - r
+    } else {
+        r
+    };
     let r = if x < 0.0 { pi - r } else { r };
-    if y < 0.0 { -r } else { r }
+    if y < 0.0 {
+        -r
+    } else {
+        r
+    }
 }
 
 #[cfg(test)]
@@ -334,7 +387,7 @@ mod tests {
     fn test_point2_basic() {
         let a = Point2::new(1.0, 2.0);
         let b = Point2::new(3.0, 4.0);
-        let c = a.add(b);
+        let c = a + b;
         assert!((c.x - 4.0).abs() < 0.001);
     }
 
@@ -363,8 +416,10 @@ mod tests {
     #[test]
     fn test_stroke_endpoints() {
         let s = Stroke::new(
-            Point2::new(0.0, 0.0), Point2::new(0.3, 0.5),
-            Point2::new(0.7, 0.5), Point2::new(1.0, 0.0),
+            Point2::new(0.0, 0.0),
+            Point2::new(0.3, 0.5),
+            Point2::new(0.7, 0.5),
+            Point2::new(1.0, 0.0),
         );
         let start = s.position(0.0);
         let end = s.position(1.0);
@@ -425,9 +480,7 @@ mod tests {
     #[test]
     fn test_serif_bracket() {
         let params = MetaFontParams::serif_regular();
-        let bracket = SerifBracket::new(
-            Point2::ZERO, Point2::new(1.0, 0.0), &params,
-        );
+        let bracket = SerifBracket::new(Point2::ZERO, Point2::new(1.0, 0.0), &params);
         assert!(bracket.length > 0.0);
         let stroke = bracket.to_stroke();
         assert!((stroke.p3.x - bracket.length).abs() < 0.01);
