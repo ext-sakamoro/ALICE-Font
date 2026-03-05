@@ -1,10 +1,10 @@
 //! SDF Atlas — GPU-friendly glyph cache with LRU eviction
 //!
-//! Packs rendered GlyphSdf tiles into a power-of-two texture atlas.
+//! Packs rendered `GlyphSdf` tiles into a power-of-two texture atlas.
 //! Uses LRU eviction when the atlas is full.
 //!
-//! Atlas layout: NxN grid of GLYPH_SDF_SIZE×GLYPH_SDF_SIZE tiles
-//! Total texture: (N × GLYPH_SDF_SIZE) × (N × GLYPH_SDF_SIZE) pixels
+//! Atlas layout: `NxN` grid of `GLYPH_SDF_SIZE×GLYPH_SDF_SIZE` tiles
+//! Total texture: (N × `GLYPH_SDF_SIZE`) × (N × `GLYPH_SDF_SIZE`) pixels
 //!
 //! License: MIT
 //! Author: Moroya Sakamoto
@@ -44,7 +44,7 @@ pub struct AtlasEntry {
 pub struct SdfAtlas {
     /// Atlas grid dimension (tiles per side)
     dim: usize,
-    /// Pixel data (dim*GLYPH_SDF_SIZE × dim*GLYPH_SDF_SIZE)
+    /// Pixel data (dim*`GLYPH_SDF_SIZE` × dim*`GLYPH_SDF_SIZE`)
     pixels: Vec<f32>,
     /// Entry table (one per tile slot)
     entries: Vec<Option<AtlasEntry>>,
@@ -61,7 +61,8 @@ pub struct SdfAtlas {
 impl SdfAtlas {
     /// Create a new atlas with given grid dimension
     ///
-    /// Total texture size: (dim × GLYPH_SDF_SIZE) × (dim × GLYPH_SDF_SIZE)
+    /// Total texture size: (dim × `GLYPH_SDF_SIZE`) × (dim × `GLYPH_SDF_SIZE`)
+    #[must_use]
     pub fn new(dim: usize, params: MetaFontParams) -> Self {
         let dim = if dim > MAX_ATLAS_DIM {
             MAX_ATLAS_DIM
@@ -81,21 +82,25 @@ impl SdfAtlas {
     }
 
     /// Total texture width/height in pixels
+    #[must_use]
     pub fn texture_size(&self) -> usize {
         self.dim * GLYPH_SDF_SIZE
     }
 
     /// Number of tile slots
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.dim * self.dim
     }
 
     /// Number of occupied tile slots
+    #[must_use]
     pub fn occupied(&self) -> usize {
         self.occupied
     }
 
     /// Raw pixel data (row-major, f32 SDF values)
+    #[must_use]
     pub fn pixels(&self) -> &[f32] {
         &self.pixels
     }
@@ -109,10 +114,10 @@ impl SdfAtlas {
 
     /// Clear all cached glyphs
     pub fn clear(&mut self) {
-        for entry in self.entries.iter_mut() {
+        for entry in &mut self.entries {
             *entry = None;
         }
-        for px in self.pixels.iter_mut() {
+        for px in &mut self.pixels {
             *px = 0.0;
         }
         self.occupied = 0;
@@ -228,16 +233,19 @@ impl SdfAtlas {
     }
 
     /// Get atlas entry without updating LRU (read-only peek)
+    #[must_use]
     pub fn peek(&self, ch: char) -> Option<&AtlasEntry> {
         self.entries.iter().flatten().find(|e| e.codepoint == ch)
     }
 
     /// Check if a character is cached
+    #[must_use]
     pub fn contains(&self, ch: char) -> bool {
         self.peek(ch).is_some()
     }
 
     /// Get the pixel value at texture coordinates
+    #[must_use]
     pub fn sample(&self, tex_x: usize, tex_y: usize) -> f32 {
         let tex_w = self.texture_size();
         if tex_x >= tex_w || tex_y >= tex_w {

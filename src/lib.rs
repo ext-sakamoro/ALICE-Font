@@ -48,6 +48,18 @@
 //!
 //! Author: Moroya Sakamoto
 
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::similar_names,
+    clippy::many_single_char_names,
+    clippy::module_name_repetitions,
+    clippy::inline_always,
+    clippy::too_many_lines
+)]
 #![no_std]
 
 #[cfg(feature = "std")]
@@ -56,10 +68,14 @@ extern crate std;
 extern crate alloc;
 
 pub mod atlas;
+#[cfg(feature = "ffi")]
+pub mod ffi;
 pub mod game;
 pub mod glyph;
 pub mod license;
 pub mod param;
+#[cfg(feature = "pyo3")]
+pub mod python;
 pub mod shaper;
 pub mod stroke;
 

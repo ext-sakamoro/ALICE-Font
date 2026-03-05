@@ -3,7 +3,7 @@
 //! License: MIT
 //! Author: Moroya Sakamoto
 
-use super::helpers::*;
+use super::helpers::{add_half_arc, add_quarter_arc};
 use super::{GlyphGenerator, GlyphSkeleton};
 use crate::stroke::{Point2, Stroke};
 

@@ -90,6 +90,7 @@ pub struct TextShaper {
 
 impl TextShaper {
     /// Create shaper with default settings
+    #[must_use]
     pub fn new(params: MetaFontParams) -> Self {
         let mut shaper = Self {
             params,
@@ -220,6 +221,7 @@ impl TextShaper {
     }
 
     /// Look up kerning adjustment for a character pair — O(log n) binary search.
+    #[must_use]
     pub fn kern(&self, left: char, right: char) -> f32 {
         let key = KernEntry::make_key(left, right);
         match self.kern_table.binary_search_by_key(&key, |e| e.key) {
@@ -270,7 +272,7 @@ impl TextShaper {
         }
     }
 
-    /// Shape text with automatic line breaking at max_width
+    /// Shape text with automatic line breaking at `max_width`
     pub fn shape_text(&self, text: &str, atlas: &mut SdfAtlas, max_width: f32) -> Vec<ShapedLine> {
         let mut lines: Vec<ShapedLine> = Vec::new();
         let line_step = self.line_height * (self.params.ascender + self.params.descender);

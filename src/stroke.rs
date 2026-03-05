@@ -3,7 +3,7 @@
 //! Each glyph is defined by a Bezier skeleton curve and a pen model
 //! that varies width along the stroke based on contrast parameter.
 //!
-//! stroke(t) = skeleton(t) ± pen_width(t) × normal(t)
+//! stroke(t) = skeleton(t) ± `pen_width(t)` × normal(t)
 //!
 //! License: MIT
 //! Author: Moroya Sakamoto
@@ -24,11 +24,13 @@ impl Point2 {
     pub const ZERO: Self = Self { x: 0.0, y: 0.0 };
 
     #[inline(always)]
+    #[must_use]
     pub const fn new(x: f32, y: f32) -> Self {
         Self { x, y }
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn lerp(self, other: Self, t: f32) -> Self {
         Self {
             x: self.x + (other.x - self.x) * t,
@@ -37,6 +39,7 @@ impl Point2 {
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn distance(self, other: Self) -> f32 {
         let dx = self.x - other.x;
         let dy = self.y - other.y;
@@ -44,11 +47,13 @@ impl Point2 {
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn length(self) -> f32 {
         fast_sqrt_stroke(self.x * self.x + self.y * self.y)
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn normalize(self) -> Self {
         let len = self.length();
         if len < 1e-10 {
@@ -63,6 +68,7 @@ impl Point2 {
 
     /// Normal (perpendicular, 90° CCW)
     #[inline(always)]
+    #[must_use]
     pub fn normal(self) -> Self {
         Self {
             x: -self.y,
@@ -71,6 +77,7 @@ impl Point2 {
     }
 
     #[inline(always)]
+    #[must_use]
     pub fn scale(self, s: f32) -> Self {
         Self {
             x: self.x * s,
@@ -80,6 +87,7 @@ impl Point2 {
 
     /// Apply italic slant transform
     #[inline(always)]
+    #[must_use]
     pub fn slant(self, angle: f32) -> Self {
         // Shear: x' = x + y * tan(angle)
         Self {
@@ -128,6 +136,7 @@ pub struct PenModel {
 }
 
 impl PenModel {
+    #[must_use]
     pub fn from_params(params: &MetaFontParams) -> Self {
         Self {
             base_width: params.stroke_half_width(),
@@ -139,6 +148,7 @@ impl PenModel {
 
     /// Pen half-width at a given stroke direction angle
     #[inline(always)]
+    #[must_use]
     pub fn half_width_at_angle(&self, direction_angle: f32) -> f32 {
         let relative = direction_angle - self.pen_angle;
         let sin_val = sin_approx_stroke(relative);
@@ -147,6 +157,7 @@ impl PenModel {
 
     /// Pen half-width at stroke parameter t given tangent direction
     #[inline(always)]
+    #[must_use]
     pub fn half_width(&self, tangent: Point2) -> f32 {
         let angle = atan2_approx(tangent.y, tangent.x);
         self.half_width_at_angle(angle)
@@ -164,11 +175,13 @@ pub struct Stroke {
 }
 
 impl Stroke {
+    #[must_use]
     pub fn new(p0: Point2, p1: Point2, p2: Point2, p3: Point2) -> Self {
         Self { p0, p1, p2, p3 }
     }
 
     /// Straight line as degenerate cubic
+    #[must_use]
     pub fn line(start: Point2, end: Point2) -> Self {
         // Pre-computed reciprocals for 1/3 and 2/3
         const ONE_THIRD: f32 = 1.0 / 3.0;
@@ -185,6 +198,7 @@ impl Stroke {
 
     /// Position at parameter t ∈ [0, 1]
     #[inline(always)]
+    #[must_use]
     pub fn position(&self, t: f32) -> Point2 {
         let t2 = t * t;
         let t3 = t2 * t;
@@ -206,6 +220,7 @@ impl Stroke {
 
     /// Tangent (first derivative) at parameter t
     #[inline(always)]
+    #[must_use]
     pub fn tangent(&self, t: f32) -> Point2 {
         let mt = 1.0 - t;
         let mt2 = mt * mt;
@@ -222,6 +237,7 @@ impl Stroke {
     }
 
     /// Approximate arc length by sampling
+    #[must_use]
     pub fn arc_length(&self, steps: usize) -> f32 {
         let mut length = 0.0f32;
         let mut prev = self.position(0.0);
@@ -236,6 +252,7 @@ impl Stroke {
     }
 
     /// Apply italic slant to all control points
+    #[must_use]
     pub fn apply_slant(&self, slant: f32) -> Self {
         Self {
             p0: self.p0.slant(slant),
@@ -246,6 +263,7 @@ impl Stroke {
     }
 
     /// Scale stroke uniformly
+    #[must_use]
     pub fn scale(&self, s: f32) -> Self {
         Self {
             p0: self.p0.scale(s),
@@ -256,6 +274,7 @@ impl Stroke {
     }
 
     /// Translate stroke
+    #[must_use]
     pub fn translate(&self, dx: f32, dy: f32) -> Self {
         let offset = Point2::new(dx, dy);
         Self {
@@ -281,6 +300,7 @@ pub struct SerifBracket {
 }
 
 impl SerifBracket {
+    #[must_use]
     pub fn new(base: Point2, direction: Point2, params: &MetaFontParams) -> Self {
         Self {
             base,
@@ -291,6 +311,7 @@ impl SerifBracket {
     }
 
     /// Generate serif as a stroke
+    #[must_use]
     pub fn to_stroke(&self) -> Stroke {
         let end = self.base + self.direction.scale(self.length);
         Stroke::line(self.base, end)
@@ -314,7 +335,7 @@ fn fast_sqrt_stroke(x: f32) -> f32 {
     // error — within single-precision ULP for all normal positive inputs.
     // Reference: Lomont, "Fast Inverse Square Root" (2003);
     //            quake3-1.32b/code/game/q_math.c, Q_rsqrt().
-    let i = 0x5f3759df - (i >> 1);
+    let i = 0x5f37_59df - (i >> 1);
     let y = f32::from_bits(i);
     let y = y * (1.5 - half * y * y); // Newton–Raphson iteration 1
     let y = y * (1.5 - half * y * y); // Newton–Raphson iteration 2

@@ -12,6 +12,11 @@ categories = ["no-std", "rendering", "graphics"]
 [features]
 default = []
 std = []
+ffi = []
+pyo3 = ["dep:pyo3"]
+
+[dependencies]
+pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
 
 [profile.release]
 opt-level = 3

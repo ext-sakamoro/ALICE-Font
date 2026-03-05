@@ -14,6 +14,7 @@
 
 /// Usage rights bit field (u16)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct UsageRights(pub u16);
 
 impl UsageRights {
@@ -36,31 +37,37 @@ impl UsageRights {
     pub const ALL: u16 = 0x03FF;
 
     #[inline]
+    #[must_use]
     pub const fn empty() -> Self {
         Self(0)
     }
 
     #[inline]
+    #[must_use]
     pub const fn all() -> Self {
         Self(Self::ALL)
     }
 
     #[inline]
+    #[must_use]
     pub const fn game_standard() -> Self {
         Self(Self::GAME_STANDARD)
     }
 
     #[inline]
+    #[must_use]
     pub const fn has(self, flag: u16) -> bool {
         (self.0 & flag) == flag
     }
 
     #[inline]
+    #[must_use]
     pub const fn with(self, flag: u16) -> Self {
         Self(self.0 | flag)
     }
 
     #[inline]
+    #[must_use]
     pub const fn without(self, flag: u16) -> Self {
         Self(self.0 & !flag)
     }
@@ -74,11 +81,12 @@ pub enum LicenseType {
     Commercial = 1,
     Trial = 2,
     Internal = 3,
-    /// Parametric fonts generated from MetaFontParams — inherently free
+    /// Parametric fonts generated from `MetaFontParams` — inherently free
     Parametric = 4,
 }
 
 impl LicenseType {
+    #[must_use]
     pub fn from_u8(v: u8) -> Option<Self> {
         match v {
             0 => Some(Self::OpenSource),
@@ -93,6 +101,7 @@ impl LicenseType {
 
 /// Platform restriction bit field (u8)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct PlatformRestriction(pub u8);
 
 impl PlatformRestriction {
@@ -107,21 +116,25 @@ impl PlatformRestriction {
     pub const ALL: u8 = 0x3F;
 
     #[inline]
+    #[must_use]
     pub const fn all() -> Self {
         Self(Self::ALL)
     }
 
     #[inline]
+    #[must_use]
     pub const fn empty() -> Self {
         Self(0)
     }
 
     #[inline]
+    #[must_use]
     pub const fn has(self, flag: u8) -> bool {
         (self.0 & flag) == flag
     }
 
     #[inline]
+    #[must_use]
     pub const fn with(self, flag: u8) -> Self {
         Self(self.0 | flag)
     }
@@ -130,10 +143,10 @@ impl PlatformRestriction {
 /// FNV-1a hash (file-local)
 #[inline(always)]
 fn fnv1a(data: &[u8]) -> u64 {
-    let mut h: u64 = 0xcbf29ce484222325;
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for &b in data {
         h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
     }
     h
 }
@@ -148,7 +161,7 @@ fn fnv1a(data: &[u8]) -> u64 {
 pub struct FontLicense {
     /// Content hash (FNV-1a of deterministic fields)
     pub content_hash: u64, // 8B  offset 0
-    /// MetaFontParams hash for binding license to specific parameters
+    /// `MetaFontParams` hash for binding license to specific parameters
     pub params_hash: u64, // 8B  offset 8
     /// Game title ID (0 = unrestricted)
     pub title_id: u32, // 4B  offset 16
@@ -163,8 +176,8 @@ pub struct FontLicense {
     /// Platform restrictions
     pub platforms: PlatformRestriction, // 1B offset 29
     /// Reserved for future use
-    pub _reserved: [u8; 2], // 2B  offset 30
-                            // Total: 32B
+    pub reserved: [u8; 2], // 2B  offset 30
+                           // Total: 32B
 }
 
 impl FontLicense {
@@ -172,6 +185,7 @@ impl FontLicense {
     pub const SIZE: usize = 32;
 
     /// Create a free parametric font license (all rights, all platforms)
+    #[must_use]
     pub fn parametric_free(params_encoded: &[u8; 40]) -> Self {
         let params_hash = fnv1a(params_encoded);
         let mut lic = Self {
@@ -183,13 +197,14 @@ impl FontLicense {
             max_seats: 0,
             license_type: LicenseType::Parametric,
             platforms: PlatformRestriction::all(),
-            _reserved: [0; 2],
+            reserved: [0; 2],
         };
         lic.content_hash = lic.compute_hash();
         lic
     }
 
     /// Create a game-title-specific license
+    #[must_use]
     pub fn for_game_title(
         params_encoded: &[u8; 40],
         title_id: u32,
@@ -205,13 +220,14 @@ impl FontLicense {
             max_seats: 0,
             license_type: LicenseType::Commercial,
             platforms,
-            _reserved: [0; 2],
+            reserved: [0; 2],
         };
         lic.content_hash = lic.compute_hash();
         lic
     }
 
     /// Encode to 32-byte wire format (little-endian, matches repr(C) layout)
+    #[must_use]
     pub fn encode(&self) -> [u8; 32] {
         let mut buf = [0u8; 32];
         buf[0..8].copy_from_slice(&self.content_hash.to_le_bytes());
@@ -222,11 +238,12 @@ impl FontLicense {
         buf[26..28].copy_from_slice(&self.max_seats.to_le_bytes());
         buf[28] = self.license_type as u8;
         buf[29] = self.platforms.0;
-        buf[30..32].copy_from_slice(&self._reserved);
+        buf[30..32].copy_from_slice(&self.reserved);
         buf
     }
 
     /// Decode from 32-byte wire format (little-endian, matches repr(C) layout)
+    #[must_use]
     pub fn decode(data: &[u8; 32]) -> Option<Self> {
         let content_hash = u64::from_le_bytes([
             data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
@@ -240,7 +257,7 @@ impl FontLicense {
         let max_seats = u16::from_le_bytes([data[26], data[27]]);
         let license_type = LicenseType::from_u8(data[28])?;
         let platforms = PlatformRestriction(data[29]);
-        let _reserved = [data[30], data[31]];
+        let reserved = [data[30], data[31]];
 
         Some(Self {
             content_hash,
@@ -251,7 +268,7 @@ impl FontLicense {
             max_seats,
             license_type,
             platforms,
-            _reserved,
+            reserved,
         })
     }
 
@@ -286,6 +303,7 @@ pub struct LicenseValidator;
 
 impl LicenseValidator {
     /// Validate a font license against runtime context
+    #[must_use]
     pub fn validate(
         license: &FontLicense,
         current_epoch: u32,
@@ -339,6 +357,7 @@ impl LicenseValidator {
     }
 
     /// Convenience: validate for commercial game distribution
+    #[must_use]
     pub fn validate_commercial_game(
         license: &FontLicense,
         current_epoch: u32,
@@ -358,6 +377,7 @@ impl LicenseValidator {
     }
 
     /// Check if a license represents a free parametric font
+    #[must_use]
     pub fn is_parametric_free(license: &FontLicense) -> bool {
         license.license_type == LicenseType::Parametric
             && license.rights.0 == UsageRights::ALL

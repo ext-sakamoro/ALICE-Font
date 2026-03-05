@@ -41,12 +41,14 @@ impl Color4 {
     };
 
     #[inline]
+    #[must_use]
     pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
 
     /// Linear interpolation
     #[inline]
+    #[must_use]
     pub fn lerp(self, other: Self, t: f32) -> Self {
         Self {
             r: self.r + (other.r - self.r) * t,
@@ -58,6 +60,7 @@ impl Color4 {
 
     /// Premultiply alpha
     #[inline]
+    #[must_use]
     pub fn premultiply(self) -> Self {
         Self {
             r: self.r * self.a,
@@ -69,6 +72,7 @@ impl Color4 {
 
     /// Porter-Duff "over" compositing (self over dst)
     #[inline]
+    #[must_use]
     pub fn over(self, dst: Self) -> Self {
         let sa = self.a;
         let da = dst.a * (1.0 - sa);
@@ -130,6 +134,7 @@ pub struct EffectStack {
 }
 
 impl EffectStack {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             effects: [None; MAX_EFFECTS],
@@ -147,14 +152,17 @@ impl EffectStack {
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.count
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.count == 0
     }
 
+    #[must_use]
     pub fn get(&self, index: usize) -> Option<&TextEffect> {
         if index < self.count {
             self.effects[index].as_ref()
@@ -190,6 +198,7 @@ pub struct GameTextStyle {
 
 impl GameTextStyle {
     /// Default style (white text, no effects)
+    #[must_use]
     pub fn default_style() -> Self {
         Self {
             base_color: Color4::WHITE,
@@ -200,6 +209,7 @@ impl GameTextStyle {
     }
 
     /// White text with black outline
+    #[must_use]
     pub fn outlined() -> Self {
         let mut effects = EffectStack::new();
         effects.push(TextEffect::Outline {
@@ -215,6 +225,7 @@ impl GameTextStyle {
     }
 
     /// White text with drop shadow
+    #[must_use]
     pub fn shadowed() -> Self {
         let mut effects = EffectStack::new();
         effects.push(TextEffect::Shadow {
@@ -232,6 +243,7 @@ impl GameTextStyle {
     }
 
     /// Neon glow effect
+    #[must_use]
     pub fn neon() -> Self {
         let mut effects = EffectStack::new();
         effects.push(TextEffect::Glow {
@@ -261,10 +273,10 @@ const STYLED_PIXEL_COUNT: usize = STYLED_GLYPH_SIZE * STYLED_GLYPH_SIZE;
 /// FNV-1a hash (file-local)
 #[inline(always)]
 fn fnv1a(data: &[u8]) -> u64 {
-    let mut h: u64 = 0xcbf29ce484222325;
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for &b in data {
         h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
     }
     h
 }
@@ -392,7 +404,7 @@ fn pow_approx(base: f32, exp: f32) -> f32 {
     let log2_base = {
         let bits = f32::to_bits(base);
         let e = ((bits >> 23) & 0xFF) as f32 - 127.0;
-        let m = f32::from_bits((bits & 0x007FFFFF) | 0x3F800000) - 1.0;
+        let m = f32::from_bits((bits & 0x007F_FFFF) | 0x3F80_0000) - 1.0;
         e + m * (1.0 + m * (-0.34484 + m * 0.09556))
     };
     let val = exp * log2_base;
@@ -406,6 +418,7 @@ fn pow_approx(base: f32, exp: f32) -> f32 {
 }
 
 /// Apply style to a single SDF glyph, producing a 32x32 RGBA tile
+#[must_use]
 pub fn style_glyph(sdf: &GlyphSdf, style: &GameTextStyle) -> StyledGlyph {
     let mut pixels = [Color4::TRANSPARENT; STYLED_PIXEL_COUNT];
     let size = STYLED_GLYPH_SIZE;
@@ -473,6 +486,7 @@ pub fn style_glyphs_batch(
 }
 
 #[cfg(not(feature = "std"))]
+#[must_use]
 pub fn style_glyphs_batch(
     sdfs: &[&GlyphSdf],
     style: &GameTextStyle,

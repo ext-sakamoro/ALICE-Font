@@ -1,4 +1,4 @@
-//! MetaFont parameters — 40-byte parametric font descriptor
+//! `MetaFont` parameters — 40-byte parametric font descriptor
 //!
 //! 10 floating-point values that fully describe a typeface.
 //! Any weight, width, serif style, and italic angle can be
@@ -41,6 +41,7 @@ impl MetaFontParams {
     pub const SIZE: usize = 40;
 
     /// Sans-serif regular (like Helvetica / Arial)
+    #[must_use]
     pub const fn sans_regular() -> Self {
         Self {
             weight: 0.45,
@@ -57,6 +58,7 @@ impl MetaFontParams {
     }
 
     /// Sans-serif bold
+    #[must_use]
     pub const fn sans_bold() -> Self {
         Self {
             weight: 0.75,
@@ -73,6 +75,7 @@ impl MetaFontParams {
     }
 
     /// Serif regular (like Times New Roman)
+    #[must_use]
     pub const fn serif_regular() -> Self {
         Self {
             weight: 0.42,
@@ -89,6 +92,7 @@ impl MetaFontParams {
     }
 
     /// Serif italic
+    #[must_use]
     pub const fn serif_italic() -> Self {
         Self {
             weight: 0.42,
@@ -105,6 +109,7 @@ impl MetaFontParams {
     }
 
     /// Monospace regular (like Courier)
+    #[must_use]
     pub const fn mono_regular() -> Self {
         Self {
             weight: 0.40,
@@ -121,6 +126,7 @@ impl MetaFontParams {
     }
 
     /// Gothic / display (like Impact)
+    #[must_use]
     pub const fn display_heavy() -> Self {
         Self {
             weight: 0.95,
@@ -137,6 +143,7 @@ impl MetaFontParams {
     }
 
     /// Interpolate between two font parameter sets
+    #[must_use]
     pub fn lerp(&self, other: &Self, t: f32) -> Self {
         Self {
             weight: self.weight + (other.weight - self.weight) * t,
@@ -153,6 +160,7 @@ impl MetaFontParams {
     }
 
     /// Encode to 40-byte wire format (little-endian)
+    #[must_use]
     pub fn encode(&self) -> [u8; 40] {
         let mut buf = [0u8; 40];
         let fields = [
@@ -175,6 +183,7 @@ impl MetaFontParams {
     }
 
     /// Decode from 40-byte wire format (little-endian)
+    #[must_use]
     pub fn decode(data: &[u8; 40]) -> Self {
         let mut fields = [0.0f32; 10];
         for i in 0..10 {
@@ -197,21 +206,25 @@ impl MetaFontParams {
     }
 
     /// Actual stroke half-width for rendering (in em units)
+    #[must_use]
     pub fn stroke_half_width(&self) -> f32 {
         0.01 + self.weight * 0.08
     }
 
     /// Thick stroke half-width (for contrast)
+    #[must_use]
     pub fn thick_half_width(&self) -> f32 {
         self.stroke_half_width() * (1.0 + self.contrast * 0.8)
     }
 
     /// Thin stroke half-width (for contrast)
+    #[must_use]
     pub fn thin_half_width(&self) -> f32 {
         self.stroke_half_width() * (1.0 - self.contrast * 0.5)
     }
 
     /// Serif bracket length
+    #[must_use]
     pub fn serif_length(&self) -> f32 {
         self.serif * 0.06
     }

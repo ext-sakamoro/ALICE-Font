@@ -34,6 +34,7 @@ pub struct GlyphSdf {
 }
 
 impl GlyphSdf {
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             data: [1.0f32; GLYPH_SDF_SIZE * GLYPH_SDF_SIZE],
@@ -46,6 +47,7 @@ impl GlyphSdf {
 
     /// Sample SDF at normalized coordinates (0..1, 0..1)
     #[inline(always)]
+    #[must_use]
     pub fn sample(&self, u: f32, v: f32) -> f32 {
         let x = (u * (GLYPH_SDF_SIZE - 1) as f32) as usize;
         let y = (v * (GLYPH_SDF_SIZE - 1) as f32) as usize;
@@ -63,6 +65,7 @@ impl GlyphSdf {
     }
 
     /// Is point inside the glyph? (SDF < 0)
+    #[must_use]
     pub fn is_inside(&self, u: f32, v: f32) -> bool {
         self.sample(u, v) < 0.0
     }
@@ -80,6 +83,7 @@ pub struct GlyphSkeleton {
 }
 
 impl GlyphSkeleton {
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             strokes: [Stroke::line(Point2::ZERO, Point2::ZERO); MAX_GLYPH_STROKES],
@@ -106,6 +110,7 @@ pub struct GlyphGenerator {
 }
 
 impl GlyphGenerator {
+    #[must_use]
     pub fn new(params: &MetaFontParams) -> Self {
         Self {
             pen: PenModel::from_params(params),
@@ -117,6 +122,7 @@ impl GlyphGenerator {
     }
 
     /// Generate SDF for a character
+    #[must_use]
     pub fn generate(&self, ch: u8) -> GlyphSdf {
         let skeleton = self.build_skeleton(ch);
         self.rasterize_sdf(&skeleton)
@@ -523,6 +529,18 @@ impl GlyphGenerator {
     ///    reduce the distance below the current value (strokes are unioned via
     ///    min), so we break out of the stroke loop immediately.
     fn rasterize_sdf(&self, skeleton: &GlyphSkeleton) -> GlyphSdf {
+        // --- Constants for stroke sample precomputation --------------------
+        //
+        // steps = 16: same rationale as before (see distance_to_stroke comment).
+        // We store (x, y, half_width) for each (stroke, sample) pair so the
+        // pixel loop does zero Bezier evaluations or trig.
+        // Flat array: [stroke_0_sample_0, ..., stroke_0_sample_16,
+        //              stroke_1_sample_0, ..., stroke_N_sample_16]
+        // Using fixed-size stack array (MAX_GLYPH_STROKES × 17 = 204 entries).
+        const STEPS: usize = 16;
+        const INV_STEPS: f32 = 1.0 / 16.0; // 1.0 / STEPS as f32, avoiding cast in const
+        const SAMPLES_PER_STROKE: usize = STEPS + 1; // inclusive endpoints
+
         let mut sdf = GlyphSdf::empty();
         sdf.advance = skeleton.advance;
 
@@ -540,17 +558,6 @@ impl GlyphGenerator {
         }
 
         // --- Precompute stroke samples (curve point + half-width) ----------
-        //
-        // steps = 16: same rationale as before (see distance_to_stroke comment).
-        // We store (x, y, half_width) for each (stroke, sample) pair so the
-        // pixel loop does zero Bezier evaluations or trig.
-        const STEPS: usize = 16;
-        const INV_STEPS: f32 = 1.0 / STEPS as f32;
-        const SAMPLES_PER_STROKE: usize = STEPS + 1; // inclusive endpoints
-
-        // Flat array: [stroke_0_sample_0, ..., stroke_0_sample_16,
-        //              stroke_1_sample_0, ..., stroke_N_sample_16]
-        // Using fixed-size stack array (MAX_GLYPH_STROKES × 17 = 204 entries).
         let mut sx = [0.0f32; MAX_GLYPH_STROKES * SAMPLES_PER_STROKE];
         let mut sy = [0.0f32; MAX_GLYPH_STROKES * SAMPLES_PER_STROKE];
         let mut shw = [0.0f32; MAX_GLYPH_STROKES * SAMPLES_PER_STROKE];
@@ -662,7 +669,10 @@ impl GlyphGenerator {
         min_dist
     }
 
+    #[allow(clippy::unused_self)]
     fn compute_bbox(&self, skeleton: &GlyphSkeleton) -> (Point2, Point2) {
+        // Pre-computed reciprocal for the 9-sample bbox pass
+        const INV_8: f32 = 1.0 / 8.0;
         let mut min_x = f32::MAX;
         let mut min_y = f32::MAX;
         let mut max_x = f32::MIN;
@@ -670,8 +680,6 @@ impl GlyphGenerator {
 
         for si in 0..skeleton.stroke_count {
             let s = &skeleton.strokes[si];
-            // Pre-computed reciprocal for the 9-sample bbox pass
-            const INV_8: f32 = 1.0 / 8.0;
             for t_step in 0..=8 {
                 let t = t_step as f32 * INV_8;
                 let p = s.position(t);
@@ -711,7 +719,7 @@ fn fast_sqrt_glyph(x: f32) -> f32 {
     // error — within single-precision ULP for all normal positive inputs.
     // Reference: Lomont, "Fast Inverse Square Root" (2003);
     //            quake3-1.32b/code/game/q_math.c, Q_rsqrt().
-    let i = 0x5f3759df - (i >> 1);
+    let i = 0x5f37_59df - (i >> 1);
     let y = f32::from_bits(i);
     let y = y * (1.5 - half * y * y); // Newton–Raphson iteration 1
     let y = y * (1.5 - half * y * y); // Newton–Raphson iteration 2

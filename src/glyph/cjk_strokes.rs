@@ -46,6 +46,7 @@ pub struct StrokePlacement {
 }
 
 impl StrokePlacement {
+    #[must_use]
     pub fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
         Self { x, y, w, h }
     }
