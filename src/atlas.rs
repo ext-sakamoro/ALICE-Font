@@ -83,19 +83,19 @@ impl SdfAtlas {
 
     /// Total texture width/height in pixels
     #[must_use]
-    pub fn texture_size(&self) -> usize {
+    pub const fn texture_size(&self) -> usize {
         self.dim * GLYPH_SDF_SIZE
     }
 
     /// Number of tile slots
     #[must_use]
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.dim * self.dim
     }
 
     /// Number of occupied tile slots
     #[must_use]
-    pub fn occupied(&self) -> usize {
+    pub const fn occupied(&self) -> usize {
         self.occupied
     }
 

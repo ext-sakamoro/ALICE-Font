@@ -176,7 +176,7 @@ pub struct Stroke {
 
 impl Stroke {
     #[must_use]
-    pub fn new(p0: Point2, p1: Point2, p2: Point2, p3: Point2) -> Self {
+    pub const fn new(p0: Point2, p1: Point2, p2: Point2, p3: Point2) -> Self {
         Self { p0, p1, p2, p3 }
     }
 
@@ -477,8 +477,8 @@ mod tests {
         let params = MetaFontParams::serif_regular();
         let pen = PenModel::from_params(&params);
         // High contrast: horizontal thin, vertical thick
-        let w_horiz = pen.half_width_at_angle(0.0);
-        let w_vert = pen.half_width_at_angle(core::f32::consts::FRAC_PI_2);
+        let _w_horiz = pen.half_width_at_angle(0.0);
+        let _w_vert = pen.half_width_at_angle(core::f32::consts::FRAC_PI_2);
         // They should differ when contrast > 0
         assert!(params.contrast > 0.0);
     }
@@ -511,5 +511,29 @@ mod tests {
     fn test_atan2_approx() {
         let a = atan2_approx(1.0, 0.0);
         assert!((a - core::f32::consts::FRAC_PI_2).abs() < 0.02);
+    }
+
+    /// `translate` must shift every control point by exactly (dx, dy).
+    #[test]
+    fn test_stroke_translate() {
+        let s = Stroke::new(
+            Point2::new(0.0, 0.0),
+            Point2::new(0.1, 0.5),
+            Point2::new(0.9, 0.5),
+            Point2::new(1.0, 0.0),
+        );
+        let t = s.translate(2.0, -3.0);
+        assert!((t.p0.x - 2.0).abs() < 1e-5 && (t.p0.y - (-3.0)).abs() < 1e-5);
+        assert!((t.p1.x - 2.1).abs() < 1e-5 && (t.p1.y - (-2.5)).abs() < 1e-5);
+        assert!((t.p2.x - 2.9).abs() < 1e-5 && (t.p2.y - (-2.5)).abs() < 1e-5);
+        assert!((t.p3.x - 3.0).abs() < 1e-5 && (t.p3.y - (-3.0)).abs() < 1e-5);
+    }
+
+    /// Normalising the zero vector must return `Point2::ZERO` without panic.
+    #[test]
+    fn test_point2_normalize_zero_vector() {
+        let zero = Point2::ZERO;
+        let n = zero.normalize();
+        assert!((n.x).abs() < 1e-10 && (n.y).abs() < 1e-10);
     }
 }

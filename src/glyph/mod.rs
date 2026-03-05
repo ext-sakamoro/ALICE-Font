@@ -35,7 +35,7 @@ pub struct GlyphSdf {
 
 impl GlyphSdf {
     #[must_use]
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self {
             data: [1.0f32; GLYPH_SDF_SIZE * GLYPH_SDF_SIZE],
             advance: 0.5,
@@ -92,7 +92,7 @@ impl GlyphSkeleton {
         }
     }
 
-    pub fn add_stroke(&mut self, stroke: Stroke) {
+    pub const fn add_stroke(&mut self, stroke: Stroke) {
         if self.stroke_count < MAX_GLYPH_STROKES {
             self.strokes[self.stroke_count] = stroke;
             self.stroke_count += 1;

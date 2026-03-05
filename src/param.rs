@@ -267,7 +267,7 @@ mod tests {
         let a = MetaFontParams::sans_regular();
         let b = MetaFontParams::sans_bold();
         let mid = a.lerp(&b, 0.5);
-        assert!((mid.weight - (a.weight + b.weight) / 2.0).abs() < 0.01);
+        assert!((mid.weight - f32::midpoint(a.weight, b.weight)).abs() < 0.01);
     }
 
     #[test]
@@ -300,5 +300,41 @@ mod tests {
         let d = MetaFontParams::display_heavy();
         assert!(d.weight > 0.9);
         assert!(d.width < 0.8); // condensed
+    }
+
+    /// `lerp(other, 0.0)` must be identical to `self`; `lerp(other, 1.0)` to `other`.
+    #[test]
+    fn test_lerp_identity_at_endpoints() {
+        let a = MetaFontParams::sans_regular();
+        let b = MetaFontParams::serif_regular();
+
+        let at_zero = a.lerp(&b, 0.0);
+        assert!((at_zero.weight - a.weight).abs() < 1e-6);
+        assert!((at_zero.serif - a.serif).abs() < 1e-6);
+        assert!((at_zero.contrast - a.contrast).abs() < 1e-6);
+
+        let at_one = a.lerp(&b, 1.0);
+        assert!((at_one.weight - b.weight).abs() < 1e-6);
+        assert!((at_one.serif - b.serif).abs() < 1e-6);
+        assert!((at_one.contrast - b.contrast).abs() < 1e-6);
+    }
+
+    /// Encode → decode must be a perfect roundtrip for every preset.
+    #[test]
+    fn test_encode_decode_all_presets() {
+        let presets = [
+            MetaFontParams::sans_regular(),
+            MetaFontParams::sans_bold(),
+            MetaFontParams::serif_regular(),
+            MetaFontParams::serif_italic(),
+            MetaFontParams::mono_regular(),
+            MetaFontParams::display_heavy(),
+        ];
+        for p in &presets {
+            let decoded = MetaFontParams::decode(&p.encode());
+            assert!((decoded.weight - p.weight).abs() < 1e-6);
+            assert!((decoded.slant - p.slant).abs() < 1e-6);
+            assert!((decoded.roundness - p.roundness).abs() < 1e-6);
+        }
     }
 }

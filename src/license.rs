@@ -87,7 +87,7 @@ pub enum LicenseType {
 
 impl LicenseType {
     #[must_use]
-    pub fn from_u8(v: u8) -> Option<Self> {
+    pub const fn from_u8(v: u8) -> Option<Self> {
         match v {
             0 => Some(Self::OpenSource),
             1 => Some(Self::Commercial),
@@ -561,5 +561,53 @@ mod tests {
         let mut encoded = lic.encode();
         encoded[28] = 255; // invalid license type (offset 28 in wire format)
         assert!(FontLicense::decode(&encoded).is_none());
+    }
+
+    /// Seat-limit path: `current_seats` > `max_seats` must yield `SeatLimitExceeded`.
+    #[test]
+    fn test_validate_seat_limit_exceeded() {
+        let params = test_params_encoded();
+        let plat = PlatformRestriction::all();
+        let mut lic = FontLicense::for_game_title(&params, 1, plat);
+        lic.max_seats = 5;
+        let result = LicenseValidator::validate(
+            &lic,
+            0,
+            PlatformRestriction::PC,
+            UsageRights::COMMERCIAL,
+            1,
+            10, // current_seats=10 > max_seats=5
+            &params,
+        );
+        assert_eq!(result, ValidationResult::SeatLimitExceeded);
+    }
+
+    /// `validate_commercial_game` convenience wrapper must succeed for a valid
+    /// commercial game-title license when all conditions are satisfied.
+    #[test]
+    fn test_validate_commercial_game_valid() {
+        let params = test_params_encoded();
+        let plat = PlatformRestriction::all();
+        let lic = FontLicense::for_game_title(&params, 7, plat);
+        let result = LicenseValidator::validate_commercial_game(
+            &lic,
+            0,
+            PlatformRestriction::PC,
+            7,
+            &params,
+        );
+        assert_eq!(result, ValidationResult::Valid);
+    }
+
+    /// `PlatformRestriction::with` should compose individual platform bits correctly.
+    #[test]
+    fn test_platform_restriction_with_compose() {
+        let p = PlatformRestriction::empty()
+            .with(PlatformRestriction::PC)
+            .with(PlatformRestriction::WEB);
+        assert!(p.has(PlatformRestriction::PC));
+        assert!(p.has(PlatformRestriction::WEB));
+        assert!(!p.has(PlatformRestriction::CONSOLE));
+        assert!(!p.has(PlatformRestriction::MOBILE));
     }
 }

@@ -135,14 +135,14 @@ pub struct EffectStack {
 
 impl EffectStack {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             effects: [None; MAX_EFFECTS],
             count: 0,
         }
     }
 
-    pub fn push(&mut self, effect: TextEffect) -> bool {
+    pub const fn push(&mut self, effect: TextEffect) -> bool {
         if self.count < MAX_EFFECTS {
             self.effects[self.count] = Some(effect);
             self.count += 1;
@@ -153,17 +153,17 @@ impl EffectStack {
     }
 
     #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.count
     }
 
     #[must_use]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.count == 0
     }
 
     #[must_use]
-    pub fn get(&self, index: usize) -> Option<&TextEffect> {
+    pub const fn get(&self, index: usize) -> Option<&TextEffect> {
         if index < self.count {
             self.effects[index].as_ref()
         } else {
@@ -171,7 +171,7 @@ impl EffectStack {
         }
     }
 
-    pub fn clear(&mut self) {
+    pub const fn clear(&mut self) {
         self.count = 0;
         self.effects = [None; MAX_EFFECTS];
     }
@@ -199,7 +199,7 @@ pub struct GameTextStyle {
 impl GameTextStyle {
     /// Default style (white text, no effects)
     #[must_use]
-    pub fn default_style() -> Self {
+    pub const fn default_style() -> Self {
         Self {
             base_color: Color4::WHITE,
             threshold: 0.0,
@@ -210,7 +210,7 @@ impl GameTextStyle {
 
     /// White text with black outline
     #[must_use]
-    pub fn outlined() -> Self {
+    pub const fn outlined() -> Self {
         let mut effects = EffectStack::new();
         effects.push(TextEffect::Outline {
             color: Color4::BLACK,
@@ -226,7 +226,7 @@ impl GameTextStyle {
 
     /// White text with drop shadow
     #[must_use]
-    pub fn shadowed() -> Self {
+    pub const fn shadowed() -> Self {
         let mut effects = EffectStack::new();
         effects.push(TextEffect::Shadow {
             color: Color4::new(0.0, 0.0, 0.0, 0.6),
@@ -244,7 +244,7 @@ impl GameTextStyle {
 
     /// Neon glow effect
     #[must_use]
-    pub fn neon() -> Self {
+    pub const fn neon() -> Self {
         let mut effects = EffectStack::new();
         effects.push(TextEffect::Glow {
             color: Color4::new(0.0, 1.0, 0.5, 0.8),

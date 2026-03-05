@@ -47,7 +47,7 @@ pub struct StrokePlacement {
 
 impl StrokePlacement {
     #[must_use]
-    pub fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
+    pub const fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
         Self { x, y, w, h }
     }
 }
@@ -201,8 +201,7 @@ mod tests {
             add_cjk_stroke(&mut skel, stroke_type, place, 0.5, 0.0);
             assert!(
                 skel.stroke_count > 0,
-                "Stroke {:?} should add at least one stroke",
-                stroke_type
+                "Stroke {stroke_type:?} should add at least one stroke"
             );
         }
     }

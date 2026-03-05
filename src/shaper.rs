@@ -61,11 +61,11 @@ struct KernEntry {
 
 impl KernEntry {
     #[inline(always)]
-    fn make_key(left: char, right: char) -> u64 {
+    const fn make_key(left: char, right: char) -> u64 {
         ((left as u64) << 32) | (right as u64)
     }
 
-    fn new(left: char, right: char, adjustment: f32) -> Self {
+    const fn new(left: char, right: char, adjustment: f32) -> Self {
         Self {
             key: Self::make_key(left, right),
             adjustment,
@@ -104,17 +104,17 @@ impl TextShaper {
     }
 
     /// Set line height multiplier (default 1.2)
-    pub fn set_line_height(&mut self, h: f32) {
+    pub const fn set_line_height(&mut self, h: f32) {
         self.line_height = h;
     }
 
     /// Set additional letter spacing (em units)
-    pub fn set_letter_spacing(&mut self, s: f32) {
+    pub const fn set_letter_spacing(&mut self, s: f32) {
         self.letter_spacing = s;
     }
 
     /// Set word spacing multiplier (default 1.0)
-    pub fn set_word_spacing(&mut self, s: f32) {
+    pub const fn set_word_spacing(&mut self, s: f32) {
         self.word_spacing = s;
     }
 
@@ -224,10 +224,9 @@ impl TextShaper {
     #[must_use]
     pub fn kern(&self, left: char, right: char) -> f32 {
         let key = KernEntry::make_key(left, right);
-        match self.kern_table.binary_search_by_key(&key, |e| e.key) {
-            Ok(idx) => self.kern_table[idx].adjustment,
-            Err(_) => 0.0,
-        }
+        self.kern_table
+            .binary_search_by_key(&key, |e| e.key)
+            .map_or(0.0, |idx| self.kern_table[idx].adjustment)
     }
 
     /// Shape a single line of text using atlas for metrics
@@ -396,7 +395,7 @@ mod tests {
         assert!((shaper.kern('X', 'Y') - (-0.05)).abs() < 0.001);
     }
 
-    /// Verify that add_kern_pair updates an existing entry correctly.
+    /// Verify that `add_kern_pair` updates an existing entry correctly.
     #[test]
     fn test_update_existing_kern_pair() {
         let mut shaper = TextShaper::new(MetaFontParams::sans_regular());
