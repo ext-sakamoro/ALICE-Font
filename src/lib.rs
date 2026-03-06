@@ -68,11 +68,15 @@ extern crate std;
 extern crate alloc;
 
 pub mod atlas;
+pub mod bidi;
+pub mod cjk;
+pub mod composite;
 #[cfg(feature = "ffi")]
 pub mod ffi;
 pub mod game;
 pub mod glyph;
 pub mod license;
+pub mod ligature;
 pub mod param;
 #[cfg(feature = "pyo3")]
 pub mod python;
