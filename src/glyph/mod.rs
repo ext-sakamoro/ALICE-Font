@@ -12,7 +12,11 @@ use crate::stroke::{PenModel, Point2, Stroke};
 
 pub mod cjk_strokes;
 mod digits;
+pub mod dispatcher;
 pub mod helpers;
+pub mod hiragana;
+pub mod kanji;
+pub mod katakana;
 mod lower;
 mod punct;
 mod upper;

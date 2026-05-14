@@ -83,9 +83,10 @@ pub mod python;
 pub mod shaper;
 pub mod stroke;
 
-pub use atlas::SdfAtlas;
+pub use atlas::{AtlasEntry, AtlasEntryMulti, SdfAtlas, SdfAtlasMulti, SdfAtlasPage};
 pub use game::{Color4, EffectStack, GameTextStyle, StyledGlyph, TextEffect};
 pub use glyph::cjk_strokes::{add_cjk_stroke, CjkStrokeType, StrokePlacement};
+pub use glyph::dispatcher::{self as glyph_dispatcher, GlyphCategory};
 pub use glyph::helpers::KAPPA;
 pub use glyph::{GlyphGenerator, GlyphSdf};
 pub use license::{

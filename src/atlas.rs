@@ -13,11 +13,22 @@ extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::glyph::{GlyphGenerator, GlyphSdf, GLYPH_SDF_SIZE};
+use crate::glyph::{dispatcher, GlyphGenerator, GlyphSdf, GLYPH_SDF_SIZE};
 use crate::param::MetaFontParams;
 
-/// Maximum atlas grid dimension (tiles per side)
+/// Maximum atlas grid dimension (tiles per side) for the legacy single-page
+/// `SdfAtlas`. New code should prefer [`SdfAtlasMulti`] which supports much
+/// larger glyph populations (CJK).
 pub const MAX_ATLAS_DIM: usize = 16;
+
+/// Maximum tiles per side for a single page of [`SdfAtlasMulti`]. With the
+/// default `GLYPH_SDF_SIZE = 32` this allows a 2048×2048 texture per page.
+pub const MAX_ATLAS_DIM_PER_PAGE: usize = 64;
+
+/// Maximum number of pages in [`SdfAtlasMulti`]. With the defaults above
+/// this gives 8 × 4096 = 32,768 glyph slots, comfortably covering all
+/// Joyo kanji plus kana plus ASCII.
+pub const MAX_ATLAS_PAGES: usize = 8;
 
 /// Atlas entry — maps a character to its tile position
 #[derive(Debug, Clone, Copy)]
@@ -150,9 +161,10 @@ impl SdfAtlas {
             }
         }
 
-        // Generate glyph SDF (ASCII only)
-        let ascii = if ch.is_ascii() { ch as u8 } else { b'?' };
-        let sdf = self.generator.generate(ascii);
+        // Generate glyph SDF via the Unicode-aware dispatcher. Non-ASCII
+        // characters get a placeholder SDF until the corresponding script
+        // module is implemented (see `docs/CJK_ROADMAP.md`).
+        let sdf = dispatcher::generate(ch, &self.params);
 
         // Find a free slot or evict LRU
         let slot = self.find_slot();
@@ -252,6 +264,283 @@ impl SdfAtlas {
             return 0.0;
         }
         self.pixels[tex_y * tex_w + tex_x]
+    }
+}
+
+// ============================================================================
+// Multi-page atlas (for CJK / large glyph populations)
+// ============================================================================
+
+/// Atlas entry for [`SdfAtlasMulti`] — includes a page identifier so the
+/// renderer can pick the right texture layer.
+#[derive(Debug, Clone, Copy)]
+pub struct AtlasEntryMulti {
+    pub codepoint: char,
+    pub page_id: u16,
+    pub tile_x: u16,
+    pub tile_y: u16,
+    pub uv_x: f32,
+    pub uv_y: f32,
+    pub uv_w: f32,
+    pub uv_h: f32,
+    pub advance: f32,
+    pub lsb: f32,
+    pub last_used: u32,
+}
+
+/// A single page of [`SdfAtlasMulti`]. Each page is a square grid of tiles
+/// of dimension `page_dim × page_dim`, each tile being `GLYPH_SDF_SIZE`
+/// pixels on a side.
+pub struct SdfAtlasPage {
+    dim: usize,
+    pixels: Vec<f32>,
+    entries: Vec<Option<AtlasEntryMulti>>,
+    occupied: usize,
+}
+
+impl SdfAtlasPage {
+    fn new(dim: usize) -> Self {
+        let tex_size = dim * GLYPH_SDF_SIZE;
+        Self {
+            dim,
+            pixels: vec![0.0f32; tex_size * tex_size],
+            entries: vec![None; dim * dim],
+            occupied: 0,
+        }
+    }
+
+    /// Total side length (in pixels) of this page's texture.
+    #[must_use]
+    pub const fn texture_size(&self) -> usize {
+        self.dim * GLYPH_SDF_SIZE
+    }
+
+    /// Number of tile slots this page exposes.
+    #[must_use]
+    pub const fn capacity(&self) -> usize {
+        self.dim * self.dim
+    }
+
+    /// Number of tile slots currently in use.
+    #[must_use]
+    pub const fn occupied(&self) -> usize {
+        self.occupied
+    }
+
+    /// Raw pixel data for GPU upload (row-major, f32 SDF values).
+    #[must_use]
+    pub fn pixels(&self) -> &[f32] {
+        &self.pixels
+    }
+}
+
+/// Multi-page SDF atlas — the recommended atlas type for CJK and other
+/// large glyph populations. Looks up entries via a flat scan today; a
+/// future revision may switch to a hash map once `no_std` story is sorted.
+pub struct SdfAtlasMulti {
+    pages: Vec<SdfAtlasPage>,
+    page_dim: usize,
+    params: MetaFontParams,
+    clock: u32,
+}
+
+impl SdfAtlasMulti {
+    /// Create a new multi-page atlas.
+    ///
+    /// `num_pages` is clamped to `[1, MAX_ATLAS_PAGES]` and `page_dim` to
+    /// `[1, MAX_ATLAS_DIM_PER_PAGE]`.
+    #[must_use]
+    pub fn new(num_pages: usize, page_dim: usize, params: MetaFontParams) -> Self {
+        let num_pages = num_pages.clamp(1, MAX_ATLAS_PAGES);
+        let page_dim = page_dim.clamp(1, MAX_ATLAS_DIM_PER_PAGE);
+        let mut pages = Vec::with_capacity(num_pages);
+        for _ in 0..num_pages {
+            pages.push(SdfAtlasPage::new(page_dim));
+        }
+        Self {
+            pages,
+            page_dim,
+            params,
+            clock: 0,
+        }
+    }
+
+    /// Number of pages in this atlas.
+    #[must_use]
+    pub fn num_pages(&self) -> usize {
+        self.pages.len()
+    }
+
+    /// Per-page texture side length in pixels.
+    #[must_use]
+    pub const fn page_size(&self) -> usize {
+        self.page_dim * GLYPH_SDF_SIZE
+    }
+
+    /// Total slot capacity across all pages.
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        self.pages.len() * self.page_dim * self.page_dim
+    }
+
+    /// Total number of glyphs currently stored across all pages.
+    #[must_use]
+    pub fn occupied(&self) -> usize {
+        self.pages.iter().map(|p| p.occupied).sum()
+    }
+
+    /// Access the raw pixels of a given page (for GPU upload).
+    #[must_use]
+    pub fn page_pixels(&self, page_id: usize) -> Option<&[f32]> {
+        self.pages.get(page_id).map(SdfAtlasPage::pixels)
+    }
+
+    /// Look up a character without inserting; returns a copy if cached.
+    #[must_use]
+    pub fn peek(&self, ch: char) -> Option<AtlasEntryMulti> {
+        for page in &self.pages {
+            for entry in page.entries.iter().flatten() {
+                if entry.codepoint == ch {
+                    return Some(*entry);
+                }
+            }
+        }
+        None
+    }
+
+    /// Is `ch` currently cached?
+    #[must_use]
+    pub fn contains(&self, ch: char) -> bool {
+        self.peek(ch).is_some()
+    }
+
+    /// Look up a character, refreshing its LRU timestamp if found.
+    pub fn lookup(&mut self, ch: char) -> Option<AtlasEntryMulti> {
+        self.clock += 1;
+        let clock = self.clock;
+        for page in &mut self.pages {
+            for entry in page.entries.iter_mut().flatten() {
+                if entry.codepoint == ch {
+                    entry.last_used = clock;
+                    return Some(*entry);
+                }
+            }
+        }
+        None
+    }
+
+    /// Get an existing entry or insert a new one, evicting an LRU entry if
+    /// every page is full.
+    pub fn get_or_insert(&mut self, ch: char) -> AtlasEntryMulti {
+        self.clock += 1;
+        let clock = self.clock;
+
+        // Cached?
+        for page in &mut self.pages {
+            for entry in page.entries.iter_mut().flatten() {
+                if entry.codepoint == ch {
+                    entry.last_used = clock;
+                    return *entry;
+                }
+            }
+        }
+
+        let sdf = dispatcher::generate(ch, &self.params);
+        let (page_id, slot) = self.find_slot();
+        let page = &mut self.pages[page_id];
+        let tile_x = slot % page.dim;
+        let tile_y = slot / page.dim;
+        let tex_size = page.texture_size();
+        let inv_tex = 1.0 / tex_size as f32;
+
+        blit_tile(page, tile_x, tile_y, &sdf);
+
+        let entry = AtlasEntryMulti {
+            codepoint: ch,
+            page_id: page_id as u16,
+            tile_x: tile_x as u16,
+            tile_y: tile_y as u16,
+            uv_x: (tile_x * GLYPH_SDF_SIZE) as f32 * inv_tex,
+            uv_y: (tile_y * GLYPH_SDF_SIZE) as f32 * inv_tex,
+            uv_w: GLYPH_SDF_SIZE as f32 * inv_tex,
+            uv_h: GLYPH_SDF_SIZE as f32 * inv_tex,
+            advance: sdf.advance,
+            lsb: sdf.lsb,
+            last_used: clock,
+        };
+        if page.entries[slot].is_none() {
+            page.occupied += 1;
+        }
+        page.entries[slot] = Some(entry);
+        entry
+    }
+
+    /// Batch insert.
+    pub fn preload(&mut self, chars: &[char]) {
+        for &ch in chars {
+            self.get_or_insert(ch);
+        }
+    }
+
+    /// Empty every page.
+    pub fn clear(&mut self) {
+        for page in &mut self.pages {
+            for entry in &mut page.entries {
+                *entry = None;
+            }
+            for px in &mut page.pixels {
+                *px = 0.0;
+            }
+            page.occupied = 0;
+        }
+        self.clock = 0;
+    }
+
+    /// Change the rendering parameters, dropping every cached glyph.
+    pub fn set_params(&mut self, params: MetaFontParams) {
+        self.params = params;
+        self.clear();
+    }
+
+    /// Find the first empty slot across all pages, or evict the LRU
+    /// entry if every page is full. Returns `(page_id, slot_index)`.
+    fn find_slot(&self) -> (usize, usize) {
+        for (pid, page) in self.pages.iter().enumerate() {
+            for (i, entry) in page.entries.iter().enumerate() {
+                if entry.is_none() {
+                    return (pid, i);
+                }
+            }
+        }
+        // All pages full — find global LRU.
+        let mut lru_page = 0;
+        let mut lru_slot = 0;
+        let mut lru_time = u32::MAX;
+        for (pid, page) in self.pages.iter().enumerate() {
+            for (i, entry) in page.entries.iter().enumerate() {
+                if let Some(e) = entry {
+                    if e.last_used < lru_time {
+                        lru_time = e.last_used;
+                        lru_page = pid;
+                        lru_slot = i;
+                    }
+                }
+            }
+        }
+        (lru_page, lru_slot)
+    }
+}
+
+fn blit_tile(page: &mut SdfAtlasPage, tile_x: usize, tile_y: usize, sdf: &GlyphSdf) {
+    let tex_w = page.texture_size();
+    let base_x = tile_x * GLYPH_SDF_SIZE;
+    let base_y = tile_y * GLYPH_SDF_SIZE;
+    for row in 0..GLYPH_SDF_SIZE {
+        for col in 0..GLYPH_SDF_SIZE {
+            let src = row * GLYPH_SDF_SIZE + col;
+            let dst = (base_y + row) * tex_w + (base_x + col);
+            page.pixels[dst] = sdf.data[src];
+        }
     }
 }
 
@@ -394,5 +683,128 @@ mod tests {
         let atlas = SdfAtlas::new(4, MetaFontParams::sans_regular());
         let tex = atlas.texture_size();
         assert_eq!(atlas.pixels().len(), tex * tex);
+    }
+
+    // ====================================================================
+    // SdfAtlasMulti
+    // ====================================================================
+
+    #[test]
+    fn multi_atlas_creation() {
+        let atlas = SdfAtlasMulti::new(3, 32, MetaFontParams::sans_regular());
+        assert_eq!(atlas.num_pages(), 3);
+        assert_eq!(atlas.page_size(), 32 * GLYPH_SDF_SIZE);
+        assert_eq!(atlas.capacity(), 3 * 32 * 32);
+        assert_eq!(atlas.occupied(), 0);
+    }
+
+    #[test]
+    fn multi_atlas_clamps_dimensions() {
+        let atlas = SdfAtlasMulti::new(999, 999, MetaFontParams::sans_regular());
+        assert_eq!(atlas.num_pages(), MAX_ATLAS_PAGES);
+        assert_eq!(atlas.page_size(), MAX_ATLAS_DIM_PER_PAGE * GLYPH_SDF_SIZE);
+    }
+
+    #[test]
+    fn multi_atlas_clamps_to_one() {
+        let atlas = SdfAtlasMulti::new(0, 0, MetaFontParams::sans_regular());
+        assert_eq!(atlas.num_pages(), 1);
+        assert_eq!(atlas.page_size(), GLYPH_SDF_SIZE);
+    }
+
+    #[test]
+    fn multi_atlas_insert_ascii() {
+        let mut atlas = SdfAtlasMulti::new(1, 4, MetaFontParams::sans_regular());
+        let entry = atlas.get_or_insert('A');
+        assert_eq!(entry.codepoint, 'A');
+        assert_eq!(entry.page_id, 0);
+        assert!(entry.advance > 0.0);
+        assert_eq!(atlas.occupied(), 1);
+    }
+
+    #[test]
+    fn multi_atlas_insert_hiragana_placeholder() {
+        let mut atlas = SdfAtlasMulti::new(1, 4, MetaFontParams::sans_regular());
+        let entry = atlas.get_or_insert('あ');
+        assert_eq!(entry.codepoint, 'あ');
+        assert!(entry.advance > 0.0);
+        assert_eq!(atlas.occupied(), 1);
+    }
+
+    #[test]
+    fn multi_atlas_pages_filled_in_order() {
+        let mut atlas = SdfAtlasMulti::new(2, 2, MetaFontParams::sans_regular()); // 4 + 4 slots
+                                                                                  // First 4 chars fill page 0, next 4 fill page 1.
+        for c in 'A'..='D' {
+            let e = atlas.get_or_insert(c);
+            assert_eq!(e.page_id, 0);
+        }
+        for c in 'E'..='H' {
+            let e = atlas.get_or_insert(c);
+            assert_eq!(e.page_id, 1);
+        }
+        assert_eq!(atlas.occupied(), 8);
+    }
+
+    #[test]
+    fn multi_atlas_lru_across_pages() {
+        let mut atlas = SdfAtlasMulti::new(1, 2, MetaFontParams::sans_regular()); // 4 slots
+        atlas.preload(&['A', 'B', 'H', 'I']);
+        assert_eq!(atlas.occupied(), 4);
+
+        // Touch every entry except 'A' so it becomes the global LRU.
+        atlas.lookup('B');
+        atlas.lookup('H');
+        atlas.lookup('I');
+
+        // Inserting 'T' should evict 'A'.
+        atlas.get_or_insert('T');
+        assert!(atlas.contains('T'));
+        assert!(!atlas.contains('A'));
+        assert!(atlas.contains('B'));
+    }
+
+    #[test]
+    fn multi_atlas_duplicate_insert() {
+        let mut atlas = SdfAtlasMulti::new(1, 4, MetaFontParams::sans_regular());
+        atlas.get_or_insert('A');
+        atlas.get_or_insert('A');
+        assert_eq!(atlas.occupied(), 1);
+    }
+
+    #[test]
+    fn multi_atlas_clear() {
+        let mut atlas = SdfAtlasMulti::new(2, 2, MetaFontParams::sans_regular());
+        atlas.preload(&['A', 'B', 'H']);
+        assert_eq!(atlas.occupied(), 3);
+        atlas.clear();
+        assert_eq!(atlas.occupied(), 0);
+        assert!(!atlas.contains('A'));
+    }
+
+    #[test]
+    fn multi_atlas_set_params_invalidates() {
+        let mut atlas = SdfAtlasMulti::new(1, 4, MetaFontParams::sans_regular());
+        atlas.preload(&['A', 'B']);
+        assert_eq!(atlas.occupied(), 2);
+        atlas.set_params(MetaFontParams::sans_bold());
+        assert_eq!(atlas.occupied(), 0);
+    }
+
+    #[test]
+    fn multi_atlas_page_pixels_accessible() {
+        let mut atlas = SdfAtlasMulti::new(2, 2, MetaFontParams::sans_regular());
+        atlas.get_or_insert('A');
+        let pixels = atlas.page_pixels(0).expect("page 0 should exist");
+        let expected = atlas.page_size() * atlas.page_size();
+        assert_eq!(pixels.len(), expected);
+        // Some pixel should be non-zero since 'A' was rasterized.
+        assert!(pixels.iter().any(|p| p.abs() > 0.001));
+    }
+
+    #[test]
+    fn multi_atlas_page_pixels_out_of_range() {
+        let atlas = SdfAtlasMulti::new(1, 2, MetaFontParams::sans_regular());
+        assert!(atlas.page_pixels(5).is_none());
     }
 }
