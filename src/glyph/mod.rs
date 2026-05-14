@@ -132,6 +132,14 @@ impl GlyphGenerator {
         self.rasterize_sdf(&skeleton)
     }
 
+    /// Rasterize a pre-built skeleton into an SDF glyph. This is the entry
+    /// point used by the CJK code paths (kana, kanji) which build their own
+    /// skeletons rather than going through the ASCII dispatch table.
+    #[must_use]
+    pub fn generate_from_skeleton(&self, skeleton: &GlyphSkeleton) -> GlyphSdf {
+        self.rasterize_sdf(skeleton)
+    }
+
     /// Build stroke skeleton for a character
     fn build_skeleton(&self, ch: u8) -> GlyphSkeleton {
         match ch {
