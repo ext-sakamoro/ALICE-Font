@@ -405,7 +405,8 @@ mod tests {
     #[test]
     fn registered_kanji_have_inside_pixels() {
         let params = MetaFontParams::sans_regular();
-        for ch in ['明', '林', '森', '好', '品', '男', '国', '同'] {
+        // extoria-website で実使用される登録済み漢字から代表的なものを選択。
+        for ch in ['明', '品', '加', '仕', '体', '部', '思', '記', '時'] {
             let sdf = generate(ch, &params);
             assert!(sdf.advance > 0.0, "{ch}: advance positive");
             let inside = sdf.data.iter().any(|d| *d < 0.0);
@@ -424,9 +425,9 @@ mod tests {
     }
 
     #[test]
-    fn forest_kanji_three_levels_deep() {
-        // 森 = ⿱木⿰木木 — depth 2 nesting.
-        let sdf = generate('森', &MetaFontParams::sans_regular());
+    fn nested_kanji_renders() {
+        // 品 = ⿱口⿰口口 — depth 2 nesting (3 occurrences of 口).
+        let sdf = generate('品', &MetaFontParams::sans_regular());
         assert!(sdf.advance > 0.0);
         let inside = sdf.data.iter().any(|d| *d < 0.0);
         assert!(inside);
