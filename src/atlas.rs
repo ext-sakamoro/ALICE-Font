@@ -334,9 +334,10 @@ impl SdfAtlasPage {
     }
 }
 
-/// Multi-page SDF atlas — the recommended atlas type for CJK and other
-/// large glyph populations. Looks up entries via a flat scan today; a
-/// future revision may switch to a hash map once `no_std` story is sorted.
+/// Multi-page SDF atlas — recommended for CJK / large glyph populations.
+///
+/// Looks up entries via a flat scan today; a future revision may switch to
+/// a hash map once the `no_std` story is sorted out.
 pub struct SdfAtlasMulti {
     pages: Vec<SdfAtlasPage>,
     page_dim: usize,
@@ -367,7 +368,7 @@ impl SdfAtlasMulti {
 
     /// Number of pages in this atlas.
     #[must_use]
-    pub fn num_pages(&self) -> usize {
+    pub const fn num_pages(&self) -> usize {
         self.pages.len()
     }
 
@@ -379,7 +380,7 @@ impl SdfAtlasMulti {
 
     /// Total slot capacity across all pages.
     #[must_use]
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.pages.len() * self.page_dim * self.page_dim
     }
 

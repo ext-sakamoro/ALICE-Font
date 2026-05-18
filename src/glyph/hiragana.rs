@@ -21,17 +21,17 @@ const KANA_ADVANCE: f32 = 1.0;
 /// Falls back to an empty placeholder for any character not yet covered.
 #[must_use]
 pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
-    match build_skeleton(ch) {
-        Some(skel) => {
-            let gen = GlyphGenerator::new(params);
-            gen.generate_from_skeleton(&skel)
-        }
-        None => {
+    build_skeleton(ch).map_or_else(
+        || {
             let mut sdf = GlyphSdf::empty();
             sdf.advance = KANA_ADVANCE;
             sdf
-        }
-    }
+        },
+        |skel| {
+            let gen = GlyphGenerator::new(params);
+            gen.generate_from_skeleton(&skel)
+        },
+    )
 }
 
 /// Build the stroke skeleton for a hiragana character. Returns `None` for
@@ -145,7 +145,7 @@ fn transform_skeleton(skel: &mut GlyphSkeleton, scale: f32, offset_x: f32, offse
 }
 
 /// Append the dakuten (゛) mark in the upper-right region of the glyph.
-fn append_dakuten(skel: &mut GlyphSkeleton) {
+const fn append_dakuten(skel: &mut GlyphSkeleton) {
     // Two short diagonal ticks, top-right.
     skel.add_stroke(Stroke::new(
         Point2::new(0.78, 0.92),

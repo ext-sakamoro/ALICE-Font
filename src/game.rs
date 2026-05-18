@@ -478,6 +478,7 @@ pub fn style_glyph(sdf: &GlyphSdf, style: &GameTextStyle) -> StyledGlyph {
 
 /// Batch-style multiple glyphs with the same style
 #[cfg(feature = "std")]
+#[must_use]
 pub fn style_glyphs_batch(
     sdfs: &[&GlyphSdf],
     style: &GameTextStyle,

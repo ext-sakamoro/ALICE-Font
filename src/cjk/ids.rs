@@ -21,15 +21,15 @@ pub enum Ids {
     /// 二項合成 (`⿰⿱⿴⿵⿶⿷⿸⿹⿺⿻`)。
     Binary {
         layout: CompositionLayout,
-        first: Box<Ids>,
-        second: Box<Ids>,
+        first: Box<Self>,
+        second: Box<Self>,
     },
     /// 三項合成 (`⿲⿳`)。
     Ternary {
         layout: CompositionLayout,
-        first: Box<Ids>,
-        second: Box<Ids>,
-        third: Box<Ids>,
+        first: Box<Self>,
+        second: Box<Self>,
+        third: Box<Self>,
     },
 }
 
@@ -113,12 +113,12 @@ impl Ids {
 
     fn collect_leaves(&self, out: &mut Vec<char>) {
         match self {
-            Ids::Leaf(c) => out.push(*c),
-            Ids::Binary { first, second, .. } => {
+            Self::Leaf(c) => out.push(*c),
+            Self::Binary { first, second, .. } => {
                 first.collect_leaves(out);
                 second.collect_leaves(out);
             }
-            Ids::Ternary {
+            Self::Ternary {
                 first,
                 second,
                 third,
@@ -135,9 +135,9 @@ impl Ids {
     #[must_use]
     pub fn depth(&self) -> usize {
         match self {
-            Ids::Leaf(_) => 0,
-            Ids::Binary { first, second, .. } => 1 + first.depth().max(second.depth()),
-            Ids::Ternary {
+            Self::Leaf(_) => 0,
+            Self::Binary { first, second, .. } => 1 + first.depth().max(second.depth()),
+            Self::Ternary {
                 first,
                 second,
                 third,

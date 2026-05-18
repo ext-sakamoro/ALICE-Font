@@ -16,17 +16,17 @@ const KANA_ADVANCE: f32 = 1.0;
 /// Generate the SDF for a katakana character.
 #[must_use]
 pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
-    match build_skeleton(ch) {
-        Some(skel) => {
-            let gen = GlyphGenerator::new(params);
-            gen.generate_from_skeleton(&skel)
-        }
-        None => {
+    build_skeleton(ch).map_or_else(
+        || {
             let mut sdf = GlyphSdf::empty();
             sdf.advance = KANA_ADVANCE;
             sdf
-        }
-    }
+        },
+        |skel| {
+            let gen = GlyphGenerator::new(params);
+            gen.generate_from_skeleton(&skel)
+        },
+    )
 }
 
 fn build_skeleton(ch: char) -> Option<GlyphSkeleton> {
@@ -136,7 +136,7 @@ fn transform_skeleton(skel: &mut GlyphSkeleton, scale: f32, offset_x: f32, offse
     }
 }
 
-fn append_dakuten(skel: &mut GlyphSkeleton) {
+const fn append_dakuten(skel: &mut GlyphSkeleton) {
     skel.add_stroke(Stroke::new(
         Point2::new(0.78, 0.92),
         Point2::new(0.82, 0.88),
