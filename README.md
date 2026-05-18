@@ -48,28 +48,61 @@ pub struct MetaFontParams {
 - **`param`** — MetaFontParams definition and preset fonts
 - **`stroke`** — Parametric stroke model (Bezier skeleton + variable-width pen)
 - **`glyph`** — SDF glyph procedural generation from stroke skeletons
+  - `glyph::dispatcher` — Unicode-aware routing (ASCII / Hiragana / Katakana / Kanji)
+  - `glyph::hiragana` — 82 hiragana characters (清音 + 濁音 + 半濁音 + 小書き)
+  - `glyph::katakana` — 83 katakana characters
+  - `glyph::kanji` — IDS-driven kanji composition engine (160+ components)
+- **`cjk`** — CJK support
+  - `cjk::layout::CompositionLayout` — IDS 12 operators (`⿰⿱⿲⿳⿴⿵⿶⿷⿸⿹⿺⿻`)
+  - `cjk::radicals::RADICALS` — full Kangxi 214 radical table
+  - `cjk::ids` — IDS parser (`⿰日月` → tree)
+  - `cjk::ids_db` — pre-defined kanji IDS definitions
 - **`atlas`** — SDF atlas management (LRU cache, GPU tile layout)
+  - `SdfAtlas` — single-page atlas (legacy, ASCII-focused)
+  - `SdfAtlasMulti` — multi-page atlas for CJK (up to 32,768 glyphs)
 - **`shaper`** — Text shaping (kerning, line layout, paragraph composition)
 
 ## Quick Start
 
+### ASCII glyph (v0.1.0 path)
+
 ```rust
-use alice_font::{MetaFontParams, GlyphGenerator, SdfAtlas, TextShaper};
+use alice_font::{MetaFontParams, GlyphGenerator};
 
-// Load a preset or receive 40 bytes from network
 let params = MetaFontParams::sans_regular();
-
-// Generate SDF for a character
 let gen = GlyphGenerator::new(&params);
-let sdf = gen.generate('A');
+let sdf = gen.generate(b'A');
+let dist = sdf.sample(0.5, 0.5); // negative inside the glyph
+```
 
-// Build an atlas for GPU rendering
-let mut atlas = SdfAtlas::new(512); // 512×512 atlas
-atlas.insert('A', &sdf);
+### CJK (v0.2.0+) via SdfAtlasMulti
 
-// Shape text for rendering
-let shaper = TextShaper::new(&params);
-let layout = shaper.shape(b"Hello, World!");
+```rust
+use alice_font::{MetaFontParams, SdfAtlasMulti};
+
+let mut atlas = SdfAtlasMulti::new(3, 32, MetaFontParams::sans_regular());
+
+// ASCII, hiragana, katakana, and kanji all dispatch through the same API.
+let chars: Vec<char> = "Hello, 株式会社エクストーリア。"
+    .chars()
+    .collect();
+atlas.preload(&chars);
+
+// `atlas.peek('明')` → AtlasEntryMulti { page_id, uv_*, advance, ... }
+// Upload `atlas.page_pixels(p)` to a GL_TEXTURE_2D_ARRAY layer per page.
+```
+
+### IDS parser
+
+```rust
+use alice_font::cjk::ids::{parse, Ids};
+use alice_font::cjk::layout::CompositionLayout;
+
+let tree = parse("⿰日月").unwrap();  // 明 = day + moon
+match tree {
+    Ids::Binary { layout, .. } => assert_eq!(layout, CompositionLayout::LeftRight),
+    _ => unreachable!(),
+}
 ```
 
 ## Mathematical Foundation

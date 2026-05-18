@@ -1,12 +1,12 @@
 [package]
 name = "alice-font"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Moroya Sakamoto <sakamoro@alicelaw.net>"]
-description = "Parametric metafont renderer — 40-byte parameters → infinite-resolution SDF glyphs"
+description = "Parametric metafont renderer with hiragana / katakana / kanji IDS composition — 40-byte parameters → infinite-resolution SDF glyphs"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/ext-sakamoro/ALICE-Font"
-keywords = ["font", "sdf", "parametric", "typography", "no_std"]
+keywords = ["font", "sdf", "parametric", "cjk", "no_std"]
 categories = ["no-std", "rendering", "graphics"]
 
 [features]
