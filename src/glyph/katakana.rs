@@ -331,24 +331,29 @@ fn build_ki() -> GlyphSkeleton {
 }
 
 fn build_ku() -> GlyphSkeleton {
-    // ク — 2 strokes
+    // ク — Noto 参照 (2 strokes)
+    // 1: 上の短い右上がり横 → 右下へカーブ降下
+    // 2: 1 の途中から左下への長い払い
     let mut s = GlyphSkeleton::empty();
     s.advance = KANA_ADVANCE;
+    // 1a: 上部の右上がり横
     s.add_stroke(Stroke::line(
-        Point2::new(0.18, 0.82),
-        Point2::new(0.72, 0.82),
+        Point2::new(0.2, 0.82),
+        Point2::new(0.82, 0.85),
     ));
+    // 1b: 右端から右下へカーブ
     s.add_stroke(Stroke::new(
-        Point2::new(0.72, 0.82),
-        Point2::new(0.7, 0.55),
-        Point2::new(0.6, 0.32),
-        Point2::new(0.45, 0.18),
+        Point2::new(0.82, 0.85),
+        Point2::new(0.8, 0.6),
+        Point2::new(0.72, 0.42),
+        Point2::new(0.58, 0.3),
     ));
+    // 2: 中央から左下への大きな撇 (払い)
     s.add_stroke(Stroke::new(
-        Point2::new(0.62, 0.62),
-        Point2::new(0.5, 0.45),
-        Point2::new(0.35, 0.25),
-        Point2::new(0.18, 0.12),
+        Point2::new(0.7, 0.7),
+        Point2::new(0.55, 0.5),
+        Point2::new(0.32, 0.3),
+        Point2::new(0.08, 0.1),
     ));
     s
 }

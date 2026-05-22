@@ -1,0 +1,10 @@
+[package]
+name = "render-ref"
+version = "0.1.0"
+edition = "2021"
+description = "Render reference glyphs from a real TTF font for visual comparison with ALICE-Font output. Not used at runtime."
+publish = false
+
+[dependencies]
+ttf-parser = "0.21"
+image = { version = "0.25", default-features = false, features = ["png"] }

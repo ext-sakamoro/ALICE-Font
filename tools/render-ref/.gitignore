@@ -1,0 +1,5 @@
+data/*.ttf
+data/*.otf
+out/
+target/
+Cargo.lock
