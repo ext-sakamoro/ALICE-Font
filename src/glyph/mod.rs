@@ -18,6 +18,7 @@ pub mod hiragana;
 pub mod kanji;
 pub mod katakana;
 mod lower;
+pub mod noto_render;
 mod punct;
 mod upper;
 

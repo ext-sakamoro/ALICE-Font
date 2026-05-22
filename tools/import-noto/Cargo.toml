@@ -1,0 +1,9 @@
+[package]
+name = "import-noto"
+version = "0.1.0"
+edition = "2021"
+description = "Read Noto Sans JP outlines and emit a Rust const table consumed by glyph::noto_render."
+publish = false
+
+[dependencies]
+ttf-parser = "0.21"
