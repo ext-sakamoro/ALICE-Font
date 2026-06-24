@@ -91,7 +91,7 @@ fn default_charset() -> Vec<char> {
 
     // ヒーロー / 製品 / セクション見出しなど extoria-website-sdf-v2 の pages/*.json
     // で参照される追加の字を補完。
-    let extra_kanji = "株式会社加速機械学習認証感情長期記憶並列実行制作支援基盤先端技術変革";
+    let extra_kanji = "株式会社加速機械学習認証感情長期記憶並列実行制作支援基盤先端技術変革鳥山孫悟空仲";
 
     let hiragana: String = (0x3041u32..=0x3096).filter_map(char::from_u32).collect();
     let katakana: String = (0x30A1u32..=0x30FC).filter_map(char::from_u32).collect();
