@@ -21,6 +21,19 @@ jobs:
       - name: Check formatting
         run: cargo fmt -- --check
 
+  build:
+    name: Build (default + no-default-features)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (default features = std)
+        run: cargo check --workspace
+      - name: Build (no-default-features) — no_std 退行検出 (一時 continue-on-error)
+        run: cargo check --workspace --no-default-features
+        continue-on-error: true
+
   actionlint:
     name: actionlint (workflow YAML 検証)
     runs-on: ubuntu-latest

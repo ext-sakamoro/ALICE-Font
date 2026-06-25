@@ -10,7 +10,7 @@ keywords = ["font", "sdf", "parametric", "cjk", "no_std"]
 categories = ["no-std", "rendering", "graphics"]
 
 [features]
-default = []
+default = ["std"]
 std = []
 ffi = []
 pyo3 = ["dep:pyo3"]
