@@ -16,7 +16,7 @@ ffi = []
 pyo3 = ["dep:pyo3"]
 
 [dependencies]
-pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
+pyo3 = { version = "0.29", optional = true, features = ["extension-module"] }
 
 [profile.release]
 opt-level = 3
