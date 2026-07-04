@@ -78,6 +78,7 @@ pub mod glyph;
 pub mod license;
 pub mod ligature;
 pub mod param;
+pub mod prelude;
 #[cfg(feature = "pyo3")]
 pub mod python;
 pub mod shaper;
