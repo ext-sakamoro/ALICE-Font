@@ -141,9 +141,26 @@ Positive outside, negative inside. GPU rendering uses a simple threshold.
 | SDF Atlas (512×512) | 256 KB |
 | TextShaper | 512 bytes |
 
+## Embedded Font Outline Data
+
+For high-quality CJK rendering, ALICE-Font embeds outline data from
+**BIZ UDPGothic** (Morisawa Universal Design Font, SIL Open Font License 1.1).
+Outlines are extracted at build time by `tools/import-font/` and compiled
+into `src/glyph/font_outlines_data.rs` as static Rust consts.
+
+- **Runtime**: no external font is loaded — glyphs render from SDF tiles.
+- **Build-time**: outlines derived from BIZUDPGothic-Regular.ttf and
+  BIZUDPGothic-Bold.ttf (see `tools/import-font/fonts/`).
+- **License**: [`LICENSES/BIZUDPGothic-OFL.txt`](LICENSES/BIZUDPGothic-OFL.txt).
+- **Font family**: BIZ UDPGothic — Morisawa Inc.
+
+The parametric API (`MetaFontParams`, skeleton generators) remains available
+as a fallback for characters not covered by the embedded outline table.
+
 ## License
 
-MIT
+- **ALICE-Font code**: MIT
+- **BIZ UDPGothic outline data**: SIL Open Font License 1.1 (see `LICENSES/`)
 
 For professional font authoring tools (ALICE-TypeForge), contact: sakamoro@ext.com
 
