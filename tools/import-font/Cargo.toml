@@ -1,0 +1,9 @@
+[package]
+name = "import-font"
+version = "0.1.0"
+edition = "2021"
+description = "Read BIZ UDPGothic (Morisawa, SIL OFL) outlines and emit Rust const tables consumed by glyph::font_render."
+publish = false
+
+[dependencies]
+ttf-parser = "0.21"

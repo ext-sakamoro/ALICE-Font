@@ -13,17 +13,17 @@ use crate::stroke::{PenModel, Point2, Stroke};
 pub mod cjk_strokes;
 mod digits;
 pub mod dispatcher;
+pub mod font_render;
 pub mod helpers;
 pub mod hiragana;
 pub mod kanji;
 pub mod katakana;
 mod lower;
-pub mod noto_render;
 mod punct;
 mod upper;
 
 /// SDF resolution for a single glyph tile
-pub const GLYPH_SDF_SIZE: usize = 32;
+pub const GLYPH_SDF_SIZE: usize = 64;
 
 /// SDF glyph data (1024 bytes for 32×32 f32)
 pub struct GlyphSdf {

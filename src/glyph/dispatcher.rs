@@ -8,7 +8,7 @@
 //! License: MIT
 //! Author: Moroya Sakamoto
 
-use crate::glyph::{hiragana, kanji, katakana, noto_render, GlyphGenerator, GlyphSdf};
+use crate::glyph::{font_render, hiragana, kanji, katakana, GlyphGenerator, GlyphSdf};
 use crate::param::MetaFontParams;
 
 /// ASCII printable range (matches the existing `GlyphGenerator` coverage).
@@ -29,11 +29,11 @@ pub const CJK_UNIFIED_RANGE: (u32, u32) = (0x4E00, 0x9FFF);
 /// placeholder (with `advance = 1.0`) for unsupported code points.
 #[must_use]
 pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
-    // First, check the Noto outline table — Noto-imported chars take priority
-    // because they faithfully reproduce real font geometry.
-    if let Some(sdf) = noto_render::rasterize(ch) {
+    // First: BIZ UDPGothic outline table (highest quality, covers ASCII + CJK).
+    if let Some(sdf) = font_render::rasterize(ch, params) {
         return sdf;
     }
+    // Fallback: parametric skeleton (for chars not in the font table).
     let cp = ch as u32;
     if in_range(cp, ASCII_RANGE) {
         let gen = GlyphGenerator::new(params);

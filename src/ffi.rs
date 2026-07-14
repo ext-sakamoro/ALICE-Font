@@ -306,11 +306,11 @@ pub unsafe extern "C" fn aa_font_style_free(ptr: *mut GameTextStyle) {
     }
 }
 
-/// Style a glyph SDF. Writes RGBA f32 data to `out` (must be >= 32*32*4 floats = 16384 bytes).
+/// Style a glyph SDF. Writes RGBA f32 data to `out` (must be >= 64*64*4 floats = 65536 bytes).
 /// Returns advance width.
 ///
 /// # Safety
-/// `sdf` must be valid. `style` must be valid. `out` must point to at least 4096 f32 values.
+/// `sdf` must be valid. `style` must be valid. `out` must point to at least 16384 f32 values.
 #[no_mangle]
 pub unsafe extern "C" fn aa_font_style_glyph(
     sdf: *const GlyphSdf,
@@ -401,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_ffi_glyph_sdf_size() {
-        assert_eq!(aa_font_glyph_sdf_size(), 32);
+        assert_eq!(aa_font_glyph_sdf_size(), 64);
     }
 
     #[test]

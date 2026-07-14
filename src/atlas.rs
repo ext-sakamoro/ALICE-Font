@@ -22,7 +22,7 @@ use crate::param::MetaFontParams;
 pub const MAX_ATLAS_DIM: usize = 16;
 
 /// Maximum tiles per side for a single page of [`SdfAtlasMulti`]. With the
-/// default `GLYPH_SDF_SIZE = 32` this allows a 2048×2048 texture per page.
+/// default `GLYPH_SDF_SIZE = 64` this allows a 4096×4096 texture per page.
 pub const MAX_ATLAS_DIM_PER_PAGE: usize = 64;
 
 /// Maximum number of pages in [`SdfAtlasMulti`]. With the defaults above
