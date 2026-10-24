@@ -14,7 +14,7 @@ exclude = ["docs/media/", "bindings/", ".github/", "scripts/", "docs/*.md"]
 
 [features]
 default = ["std"]
-std = []
+std = ["alice-det-math/std"]
 ffi = []
 pyo3 = ["dep:pyo3"]
 # `serde` — enable Serialize/Deserialize on public data types (TextEffect,
@@ -30,6 +30,7 @@ sdf = ["dep:alice-sdf", "std"]
 pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
 serde = { version = "1", optional = true, features = ["derive"] }
 alice-sdf = { version = "2", optional = true, default-features = false }
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "6384856c8b00f1615e1cd6b5c74d88036c1a8706", version = "0.5.2", default-features = false }
 
 [dev-dependencies]
 serde_json = "1"
