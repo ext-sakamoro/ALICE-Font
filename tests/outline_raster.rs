@@ -313,4 +313,5 @@ fn the_output_bits_are_the_same_on_every_platform() {
     assert_eq!(digest(&sdf), STAR_DIGEST, "{:#018x}", digest(&sdf));
 }
 
+/// The golden: every CI platform (Linux x86_64 / arm64, macOS, Windows) must give exactly these bits
 const STAR_DIGEST: u64 = 0xa09e_8903_c20e_2b17;

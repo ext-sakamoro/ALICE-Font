@@ -19,6 +19,7 @@ All notable changes to ALICE-Font will be documented in this file.
 - CI: package integrity と cargo-semver-checks の job を `security-audit.yml` から dispatch 専用の `package-integrity.yml` に移動
 - CI: 全 feature (pyo3 を含む) の clippy を Python 3.12 に固定した job で実行
 - CI: ci.yml の ALICE-SDF の checkout を削除し、checkout を repository の root に置く
+- CI: outline raster の試験 (`tests/outline_raster.rs`、出力の digest の golden を含む) を Linux x86_64 / arm64・macOS・Windows の matrix で実行
 - CI: ci.yml / fuzz.yml / security-audit.yml を `ci/**` の push でも実行
 - CI: 全 job を GitHub-hosted の runner (`ubuntu-24.04-arm`、fmt / actionlint / audit は `ubuntu-latest`) で実行し、`vars.CI_RUNS_ON` の参照と `pull_request` の trigger を削除
 - source / 例 / shader / binding の license の行を `SPDX-License-Identifier: LicenseRef-Proprietary` に変更
