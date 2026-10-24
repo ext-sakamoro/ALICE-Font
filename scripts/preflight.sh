@@ -6,7 +6,7 @@
 # Run `--quick` before every push.
 #
 # usage: scripts/preflight.sh [--quick]   (--quick skips the test / bench suites)
-# generator rev 14ebd13527e9101cc767d6df5bc879451611b5f5
+# generator rev 53b5498bfca8e6d099032eaee5ccb99ec580b7b3
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # --- heavy slot (begin) ---
@@ -252,21 +252,29 @@ has_toolchain() { grep -q "^$1" <<<"$(rustup toolchain list)"; }
 # Steps CI runs that this file cannot reproduce locally (they can only fail remotely):
 #   - ci.yml:pyo3: uses actions/setup-python@v6 (an action this file cannot run)
 #   - ci.yml:pyo3:Clippy (all features, all targets) (needs network / runner-only)
+#   - security-audit.yml:changes:decide (reads AFTER, BEFORE, CREATED, EVENT, FORCED, PR_BASE, PR_HEAD, a value only the runner has)
 #   - security-audit.yml:audit:Install cargo-audit (needs network / runner-only)
 #   - security-audit.yml:deny:Install cargo-deny (needs network / runner-only)
 #   - security-audit.yml:unused-deps:run (needs network / runner-only)
+#   - security-audit.yml:gate:gate (reads NEEDS, a value only the runner has)
+#   - fuzz.yml:changes:decide (reads AFTER, BEFORE, CREATED, EVENT, FORCED, PR_BASE, PR_HEAD, a value only the runner has)
 #   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_font_license_decode] (needs network / runner-only)
 #   - fuzz.yml:fuzz:Set fuzz duration [target=fuzz_font_license_decode] (no cargo / grep)
-#   - fuzz.yml:fuzz:Run fuzz target (time-boxed) [target=fuzz_font_license_decode] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Run fuzz target (time-boxed) [target=fuzz_font_license_decode] (runner-only (open-ended or unprovable-bounded fuzz run))
 #   - fuzz.yml:fuzz:Report crash (informational) [target=fuzz_font_license_decode] (its `if:` runs on what happened earlier on the runner)
 #   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_glyph_render] (needs network / runner-only)
 #   - fuzz.yml:fuzz:Set fuzz duration [target=fuzz_glyph_render] (no cargo / grep)
-#   - fuzz.yml:fuzz:Run fuzz target (time-boxed) [target=fuzz_glyph_render] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Run fuzz target (time-boxed) [target=fuzz_glyph_render] (runner-only (open-ended or unprovable-bounded fuzz run))
 #   - fuzz.yml:fuzz:Report crash (informational) [target=fuzz_glyph_render] (its `if:` runs on what happened earlier on the runner)
 #   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_dsl_lookup] (needs network / runner-only)
 #   - fuzz.yml:fuzz:Set fuzz duration [target=fuzz_dsl_lookup] (no cargo / grep)
-#   - fuzz.yml:fuzz:Run fuzz target (time-boxed) [target=fuzz_dsl_lookup] (continue-on-error, runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Run fuzz target (time-boxed) [target=fuzz_dsl_lookup] (runner-only (open-ended or unprovable-bounded fuzz run))
 #   - fuzz.yml:fuzz:Report crash (informational) [target=fuzz_dsl_lookup] (its `if:` runs on what happened earlier on the runner)
+#   - fuzz.yml:fuzz:Install cargo-fuzz [target=fuzz_sfnt_font] (needs network / runner-only)
+#   - fuzz.yml:fuzz:Set fuzz duration [target=fuzz_sfnt_font] (no cargo / grep)
+#   - fuzz.yml:fuzz:Run fuzz target (time-boxed) [target=fuzz_sfnt_font] (runner-only (open-ended or unprovable-bounded fuzz run))
+#   - fuzz.yml:fuzz:Report crash (informational) [target=fuzz_sfnt_font] (its `if:` runs on what happened earlier on the runner)
+#   - fuzz.yml:gate:gate (reads NEEDS, a value only the runner has)
 
 need actionlint "brew install actionlint"
 need cargo-audit "cargo install cargo-audit --locked"
@@ -407,6 +415,17 @@ if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
   )
 else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_dsl_lookup]: nightly / cargo-fuzz not installed' >&2
+fi
+
+step "fuzz.yml / fuzz: Build fuzz target [target=fuzz_sfnt_font]"
+if has_toolchain nightly && cargo +nightly fuzz --version >/dev/null 2>&1; then
+  (
+    export CARGO_TERM_COLOR="always"
+    cd fuzz
+    cargo +nightly fuzz build "fuzz_sfnt_font"
+  )
+else
+  echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_sfnt_font]: nightly / cargo-fuzz not installed' >&2
 fi
 
 if [[ $quick -eq 1 ]]; then

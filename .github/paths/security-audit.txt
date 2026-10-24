@@ -4,6 +4,8 @@
 Cargo.toml
 Cargo.lock
 src/**
+crates/*/Cargo.toml
+crates/*/src/**
 deny.toml
 .github/workflows/security-audit.yml
 .github/actions/**

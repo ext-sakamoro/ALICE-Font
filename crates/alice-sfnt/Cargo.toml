@@ -1,0 +1,19 @@
+[package]
+name = "alice-sfnt"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors = ["Moroya Sakamoto"]
+description = "Reads TrueType / OpenType (sfnt) font files: table directory, collections, cmap, glyf / loca, CFF / CFF2 outlines and horizontal metrics. Every count is checked against the bytes left before it is read, and every failure is a Result."
+license = "LicenseRef-Proprietary"
+publish = false
+repository = "https://github.com/ext-sakamoro/ALICE-Font"
+keywords = ["font", "truetype", "opentype", "cff", "no_std"]
+categories = ["no-std", "parser-implementations", "graphics"]
+
+[features]
+default = []
+
+[dev-dependencies]
+# the reference the differential test compares outlines and lookups against, on valid fonts only
+ttf-parser = "0.25"
