@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>ALICE-Font diagnostic — {{CHAR}}</title>
+<style>
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex;
+    flex-direction: row;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  .main { display: flex; flex-direction: column; gap: 12px; }
+  h1 { font-size: 16px; font-weight: 500; margin: 0; }
+  .meta { font-size: 12px; opacity: 0.7; }
+  canvas {
+    border: 1px solid #334155;
+    background: #0f172a;
+    image-rendering: pixelated;
+  }
+  .info {
+    font-family: SF Mono, Menlo, monospace;
+    font-size: 11px;
+    background: #1e293b;
+    padding: 12px;
+    border-radius: 4px;
+    max-width: 480px;
+    max-height: 640px;
+    overflow: auto;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .row { display: flex; gap: 8px; font-size: 12px; }
+  .label { opacity: 0.6; min-width: 120px; }
+  .value { font-family: SF Mono, monospace; color: #93c5fd; }
+  #shader-log { color: #f87171; font-size: 11px; font-family: monospace; max-width: 480px; }
+</style>
+</head>
+<body>
+<div class="main">
+  <h1>ALICE-Font diagnostic — {{CHAR}} (U+{{CHAR_HEX}})</h1>
+  <div class="meta">S6.3.2b.4 flat UBO shader path、grid overlay 付き diagnostic</div>
+  <canvas id="glyph" width="512" height="512"></canvas>
+  <div id="shader-log"></div>
+</div>
+<div class="info">
+<div class="row"><span class="label">char</span><span class="value">{{CHAR}} (U+{{CHAR_HEX}})</span></div>
+<div class="row"><span class="label">strokes</span><span class="value">{{STROKE_COUNT}}</span></div>
+<div class="row"><span class="label">advance</span><span class="value">{{ADVANCE}} em</span></div>
+<div class="row"><span class="label">pen.base_width</span><span class="value">{{PEN_BASE_WIDTH}} em</span></div>
+<div class="row"><span class="label">pen.contrast</span><span class="value">{{PEN_CONTRAST}}</span></div>
+<div class="row"><span class="label">pen.pen_angle</span><span class="value">{{PEN_ANGLE}}</span></div>
+<div class="row"><span class="label">pen.roundness</span><span class="value">{{PEN_ROUNDNESS}}</span></div>
+<hr style="border: 1px solid #334155; margin: 8px 0;" />
+<div style="opacity: 0.8; font-size: 11px;">Payload (JSON):</div>
+<pre style="font-size: 10px; margin: 4px 0 0; opacity: 0.85;">{{PAYLOAD_DEBUG_JSON}}</pre>
+</div>
+
+<script id="frag-shader" type="x-shader/x-fragment">
+{{FRAG_SHADER}}
+</script>
+
+<script id="vert-shader" type="x-shader/x-vertex">
+#version 300 es
+in vec2 aPos;
+out vec2 vUV;
+void main() {
+    vUV = vec2(aPos.x * 0.5 + 0.5, aPos.y * 0.5 + 0.5);
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}
+</script>
+
+<script>
+"use strict";
+const UBO_BYTES_ARR = {{UBO_BYTES_JSON}};
+
+const canvas = document.getElementById("glyph");
+const logDiv = document.getElementById("shader-log");
+const gl = canvas.getContext("webgl2");
+if (!gl) { logDiv.textContent = "WebGL2 unavailable"; throw new Error("no webgl2"); }
+
+function compileShader(kind, src, kindName) {
+  const s = gl.createShader(kind);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s);
+    logDiv.textContent = kindName + " compile fail:\n" + log;
+    throw new Error(kindName + " compile fail");
+  }
+  return s;
+}
+const vs = compileShader(gl.VERTEX_SHADER, document.getElementById("vert-shader").textContent.trim(), "vertex");
+const fs = compileShader(gl.FRAGMENT_SHADER, document.getElementById("frag-shader").textContent.trim(), "fragment");
+const prog = gl.createProgram();
+gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  logDiv.textContent = "link fail:\n" + gl.getProgramInfoLog(prog);
+  throw new Error("link fail");
+}
+gl.useProgram(prog);
+
+const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+const vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+const posLoc = gl.getAttribLocation(prog, "aPos");
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+const uboData = new Uint8Array(UBO_BYTES_ARR);
+const ubo = gl.createBuffer();
+gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+gl.bufferData(gl.UNIFORM_BUFFER, uboData, gl.STATIC_DRAW);
+const blockIndex = gl.getUniformBlockIndex(prog, "GlyphBlock");
+gl.uniformBlockBinding(prog, blockIndex, 0);
+gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, ubo);
+
+gl.uniform4f(gl.getUniformLocation(prog, "uFgColor"), 0.925, 0.933, 0.945, 1.0);
+gl.uniform4f(gl.getUniformLocation(prog, "uBgColor"), 0.059, 0.090, 0.165, 1.0);
+gl.uniform1f(gl.getUniformLocation(prog, "uAntiAlias"), 0.003);
+
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.clearColor(0.059, 0.090, 0.165, 1.0);
+gl.clear(gl.COLOR_BUFFER_BIT);
+gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+// Overlay grid on 2D context.
+const overlay = document.createElement("canvas");
+overlay.width = 512; overlay.height = 512;
+overlay.style.position = "absolute";
+overlay.style.pointerEvents = "none";
+overlay.style.left = canvas.offsetLeft + "px";
+overlay.style.top = canvas.offsetTop + "px";
+document.body.appendChild(overlay);
+const ctx = overlay.getContext("2d");
+ctx.strokeStyle = "rgba(148, 163, 184, 0.15)";
+ctx.lineWidth = 1;
+for (let i = 1; i < 10; i++) {
+  const p = i * 51.2;
+  ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, 512); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(512, p); ctx.stroke();
+}
+// Center cross
+ctx.strokeStyle = "rgba(96, 165, 250, 0.35)";
+ctx.beginPath(); ctx.moveTo(256, 0); ctx.lineTo(256, 512); ctx.stroke();
+ctx.beginPath(); ctx.moveTo(0, 256); ctx.lineTo(512, 256); ctx.stroke();
+
+logDiv.textContent = "✓ shader compiled + linked、UBO uploaded (" + uboData.length + "B)、rendered.";
+logDiv.style.color = "#86efac";
+</script>
+</body>
+</html>

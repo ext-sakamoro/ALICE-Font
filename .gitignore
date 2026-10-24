@@ -1,0 +1,22 @@
+
+/target/
+Cargo.lock
+
+# Subcrate build artefacts (tools/*/target etc.) — root-level `/target/`
+# only covers the workspace root, so tools/import-font, tools/render-ref
+# and tools/alice-font-atlas each need their own coverage.
+**/target/
+**/Cargo.lock
+
+# README media capture intermediates (Playwright WEBM). Only the final
+# MP4 (docs/media/*.mp4) are committed — WEBM is the raw Playwright
+# recording, converted to MP4 by scripts/capture-media-v2.mjs pipeline.
+docs/media/*.webm
+scripts/.playwright/
+scripts/node_modules/
+scripts/package-lock.json
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
+

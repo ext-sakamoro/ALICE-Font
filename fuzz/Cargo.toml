@@ -1,0 +1,47 @@
+[package]
+name = "alice-font-fuzz"
+version = "0.0.0"
+license = "LicenseRef-Proprietary"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.alice-font]
+path = ".."
+default-features = false
+features = ["std"]
+
+# cargo-machete false-positive 予防
+[package.metadata.cargo-machete]
+ignored = ["libfuzzer-sys"]
+
+# 32-byte wire format decode を任意 byte 列で fuzz
+# FontLicense::decode は Option<Self> を返し、LicenseType::from_u8 で fail-fast
+# するが、境界 byte / reserved 領域を含めた panic ゼロを検証
+[[bin]]
+name = "fuzz_font_license_decode"
+path = "fuzz_targets/fuzz_font_license_decode.rs"
+doc = false
+
+# GlyphGenerator::generate(u8) を任意 byte + 任意 MetaFontParams で fuzz
+# ASCII/Latin/punct dispatch + placeholder 経路の panic ゼロを検証
+[[bin]]
+name = "fuzz_glyph_render"
+path = "fuzz_targets/fuzz_glyph_render.rs"
+doc = false
+
+# font_dsl::dsl_lookup(char) を任意 codepoint で fuzz
+# 未登録 codepoint の None 返却 + 登録済 codepoint の SkeletonGlyph 生成 panic ゼロ検証
+[[bin]]
+name = "fuzz_dsl_lookup"
+path = "fuzz_targets/fuzz_dsl_lookup.rs"
+doc = false
+
+[workspace]
+members = ["."]

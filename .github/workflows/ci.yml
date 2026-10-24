@@ -1,0 +1,135 @@
+name: CI
+
+# - test / clippy / doc を default + full native feature set (std,ffi,serde) で `-D warnings`
+# - no_std: `cargo check --no-default-features` は以前から green だったので `continue-on-error` を撤去し
+#   bare-metal thumbv7em (rust-toolchain.toml の `targets`) で本物の no_std を証明
+# - feature-powerset: std 固定 depth 2 (pyo3 と sdf を除外、pyo3 は pyo3 job、sdf は build job)
+#   security-audit / fuzz の stub action は撤去 (real dep を audit / deny が見る)
+
+on:
+  push:
+    branches: [main, 'ci/**']
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  # full native feature set (pyo3 / sdf を除く、test / clippy / doc で共用)
+  NATIVE_FEATURES: "std,ffi,serde"
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+  test:
+    name: Test (default + full native)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+      - name: Test (default features = std)
+        run: cargo test --workspace
+      - name: Test (full native feature set)
+        run: cargo test --workspace --features "$NATIVE_FEATURES"
+
+  clippy:
+    name: Clippy (all targets, -D warnings)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+      - name: Clippy (default features, all targets)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Clippy (full native feature set, all targets)
+        run: cargo clippy --workspace --features "$NATIVE_FEATURES" --all-targets -- -D warnings
+
+  pyo3:
+    # every feature, pyo3 included, against a pinned Python (the pyo3 0.22 build script refuses a Python newer
+    # than it supports); runner-only, the local preflight does not reproduce it
+    name: Clippy (all features incl. pyo3, Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Clippy (all features, all targets)
+        env:
+          PYO3_PYTHON: python3.12
+        run: |
+          python3 --version
+          cargo clippy --workspace --all-features --all-targets -- -D warnings
+
+  build:
+    name: Build (sdf bridge + no_std host / bare-metal)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      # thumbv7em target は rust-toolchain.toml の `targets` で pinned toolchain 側に install
+      # (dtolnay の `targets:` は stable 側に入り pin と別 toolchain になる)
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+      - name: Build (sdf feature = alice-sdf bridge)
+        run: cargo check --workspace --features sdf
+      # crate 間契約 oracle (Font → alice-sdf): feature-gated test は専用 step で必ず走らせる
+      - name: Test (sdf feature = Font → alice-sdf contract oracle)
+        run: cargo test --workspace --features sdf --test analytic_oracle
+      - name: Build (no_std, host)
+        run: cargo check --workspace --no-default-features
+      - name: Build (no_std, bare-metal thumbv7em-none-eabihf)
+        run: cargo check --lib --no-default-features --target thumbv7em-none-eabihf
+
+  feature-powerset:
+    name: Feature powerset (cargo-hack, std 固定, depth 2)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@cargo-hack
+      - name: Powerset (std + {ffi, serde} depth 2)
+        run: cargo hack check --lib --feature-powerset --depth 2 --exclude-features pyo3,sdf --features std
+
+  doc:
+    name: Doc (-D warnings)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+      - name: Doc (full native feature set)
+        run: cargo doc --no-deps --features "$NATIVE_FEATURES"
+        env:
+          RUSTDOCFLAGS: "-Dwarnings"
+
+  actionlint:
+    name: actionlint (workflow YAML 検証)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run actionlint
+        uses: reviewdog/action-actionlint@v1
+        with:
+          fail_level: error
+          reporter: github-check

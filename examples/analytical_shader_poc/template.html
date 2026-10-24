@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>ALICE-Font analytical shader PoC (UBO v3) — {{CHAR}}</title>
+<style>
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  h1 { font-size: 18px; font-weight: 500; }
+  .meta { font-size: 12px; opacity: 0.7; }
+  canvas {
+    border: 1px solid #334155;
+    background: #0f172a;
+    image-rendering: pixelated;
+    max-width: 100%;
+  }
+  .footer {
+    font-size: 11px;
+    opacity: 0.5;
+    text-align: center;
+    line-height: 1.6;
+  }
+  code {
+    background: #1e293b;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<h1>ALICE-Font S6.3.2b — UBO fragment-shader PoC (v3)</h1>
+<div class="meta">
+  <strong>{{CHAR}}</strong> (U+{{CHAR_HEX}})
+  · UBO = <code>{{UBO_BYTES}} byte (fixed 800B)</code>
+  · strokes = <code>{{STROKE_COUNT}}</code>
+  · texture upload = <code>0 byte</code>
+</div>
+<canvas id="glyph" width="512" height="512"></canvas>
+<div class="footer">
+  runtime = shader (analytical Bezier + variable-width pen envelope) +
+  std140 UBO 経由 uniform buffer。<br />
+  bitmap / atlas / TTF outline data は一切参照していません。<br />
+  「データを送るな、法則を送れ」ALICE-Font v0.5.2 · S6.3.2b (UBO GLSL 完全統合)
+</div>
+
+<script id="frag-shader" type="x-shader/x-fragment">
+{{FRAG_SHADER}}
+</script>
+
+<script id="vert-shader" type="x-shader/x-vertex">
+#version 300 es
+in vec2 aPos;
+out vec2 vUV;
+void main() {
+    vUV = vec2(aPos.x * 0.5 + 0.5, aPos.y * 0.5 + 0.5);
+    gl_Position = vec4(aPos, 0.0, 1.0);
+}
+</script>
+
+<script>
+"use strict";
+
+// ===========================================================================
+// UBO bytes injected by cargo run --example analytical_shader_poc。
+// AnalyticalGlyphPayload::to_std140_bytes() の出力 (fixed 800 byte)。
+// ===========================================================================
+const UBO_BYTES_ARR = {{UBO_BYTES_JSON}};
+
+// ===========================================================================
+// WebGL2 bootstrap
+// ===========================================================================
+const canvas = document.getElementById("glyph");
+const gl = canvas.getContext("webgl2");
+if (!gl) {
+  alert("WebGL2 が使えません。Chrome / Firefox / Safari 最新版で開いてください。");
+  throw new Error("no webgl2");
+}
+
+function compileShader(kind, src) {
+  const s = gl.createShader(kind);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s);
+    console.error("shader compile fail:", log);
+    document.body.innerHTML = "<pre style='color: #f87171'>shader compile fail:\n" + log + "</pre>";
+    throw new Error("shader compile fail");
+  }
+  return s;
+}
+
+const vertSrc = document.getElementById("vert-shader").textContent.trim();
+const fragSrc = document.getElementById("frag-shader").textContent.trim();
+const vs = compileShader(gl.VERTEX_SHADER, vertSrc);
+const fs = compileShader(gl.FRAGMENT_SHADER, fragSrc);
+const prog = gl.createProgram();
+gl.attachShader(prog, vs);
+gl.attachShader(prog, fs);
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  const log = gl.getProgramInfoLog(prog);
+  console.error("link fail:", log);
+  throw new Error("link fail");
+}
+gl.useProgram(prog);
+
+// ===========================================================================
+// Fullscreen quad
+// ===========================================================================
+const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+const vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+const posLoc = gl.getAttribLocation(prog, "aPos");
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+// ===========================================================================
+// UBO upload (S6.3.2b sub-goal 1)。
+// Rust to_std140_bytes 出力を Uint8Array にして gl.UNIFORM_BUFFER に upload。
+// ===========================================================================
+const uboData = new Uint8Array(UBO_BYTES_ARR);
+console.assert(uboData.length === 800, "UBO byte length must be 800 (got " + uboData.length + ")");
+
+const ubo = gl.createBuffer();
+gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+gl.bufferData(gl.UNIFORM_BUFFER, uboData, gl.STATIC_DRAW);
+
+const blockIndex = gl.getUniformBlockIndex(prog, "GlyphBlock");
+if (blockIndex === gl.INVALID_INDEX) {
+  throw new Error("uniform block 'GlyphBlock' not found in shader");
+}
+const BINDING_POINT = 0;
+gl.uniformBlockBinding(prog, blockIndex, BINDING_POINT);
+gl.bindBufferBase(gl.UNIFORM_BUFFER, BINDING_POINT, ubo);
+
+// ===========================================================================
+// Non-UBO uniforms (colors + AA)。
+// ===========================================================================
+gl.uniform4f(gl.getUniformLocation(prog, "uFgColor"), 0.925, 0.933, 0.945, 1.0);
+gl.uniform4f(gl.getUniformLocation(prog, "uBgColor"), 0.059, 0.090, 0.165, 1.0);
+gl.uniform1f(gl.getUniformLocation(prog, "uAntiAlias"), 0.003);
+
+// ===========================================================================
+// Draw
+// ===========================================================================
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.clearColor(0.059, 0.090, 0.165, 1.0);
+gl.clear(gl.COLOR_BUFFER_BIT);
+gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+console.info("ALICE-Font analytical UBO shader PoC — rendered {{STROKE_COUNT}} strokes,",
+  "UBO byte length:", uboData.length, ", texture upload: 0 byte");
+</script>
+</body>
+</html>

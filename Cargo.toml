@@ -1,0 +1,88 @@
+[package]
+name = "alice-font"
+version = "0.7.6"
+edition = "2021"
+authors = ["Moroya Sakamoto"]
+description = "Procedural CJK font — no atlas, no TTF, no bitmap. Ships only laws (40-byte MetaFontParams + radical Bezier skeletons + IDS composition rules); the runtime evaluates strokes analytically for every pixel. Aligned with the ALICE principle 「データを送るな、法則を送れ」."
+license = "LicenseRef-Proprietary"
+publish = false
+repository = "https://github.com/ext-sakamoro/ALICE-Font"
+keywords = ["font", "sdf", "parametric", "cjk", "no_std"]
+categories = ["no-std", "rendering", "graphics"]
+# crate に同梱しない file
+exclude = ["docs/media/", "bindings/", ".github/", "scripts/", "docs/*.md"]
+
+[features]
+default = ["std"]
+std = []
+ffi = []
+pyo3 = ["dep:pyo3"]
+# `serde` — enable Serialize/Deserialize on public data types (TextEffect,
+# EffectStack, GameTextStyle, Color4). Consumers exchanging text style
+# specs as JSON (block schemas, preset files, etc.) need this.
+serde = ["dep:serde", "std"]
+# `sdf` — Milestone A.3 (2026-08-06): ALICE-SDF bridge、Stroke / GlyphSkeleton を
+# alice_sdf::Sdf2dNode に変換する parametric adapter (Bezier variant 経由の law-only path)
+# alice-sdf の font feature (marker) と対称、crates.io 2.x dep (2026-09-16、path dep から移行)
+sdf = ["dep:alice-sdf", "std"]
+
+[dependencies]
+pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
+serde = { version = "1", optional = true, features = ["derive"] }
+alice-sdf = { version = "2", optional = true, default-features = false }
+
+[dev-dependencies]
+serde_json = "1"
+
+# S6.3.1 analytical shader PoC example — requires `serde` feature for
+# AnalyticalGlyphPayload serialization.
+[[example]]
+name = "analytical_shader_poc"
+path = "examples/analytical_shader_poc/main.rs"
+required-features = ["serde"]
+
+# S6.3.2 multi-kanji analytical shader PoC example.
+[[example]]
+name = "analytical_shader_multi_poc"
+path = "examples/analytical_shader_multi_poc/main.rs"
+required-features = ["serde"]
+
+# S6.3.2b.4 diagnostic (single kanji + shader debug UI)
+[[example]]
+name = "analytical_shader_diagnostic_poc"
+path = "examples/analytical_shader_diagnostic_poc/main.rs"
+required-features = ["serde"]
+
+# S6.3.3 outline (polygon contour) shader PoC — v0.6.0 architecture pivot
+[[example]]
+name = "analytical_outline_poc"
+path = "examples/analytical_outline_poc/main.rs"
+required-features = ["serde"]
+
+# S6.3.3 v0.6.1: instanced multi-outline text rendering
+[[example]]
+name = "analytical_outline_multi_poc"
+path = "examples/analytical_outline_multi_poc/main.rs"
+required-features = ["serde"]
+
+# S6.4 v0.7.0: zero-asset parametric skeleton demo (radicals + IDS → shader)
+[[example]]
+name = "s64_zero_asset_demo"
+path = "examples/s64_zero_asset_demo/main.rs"
+required-features = ["serde"]
+
+# S6.4 v0.7.1-alpha: Font DSL demo (Metafont-style builder、20 char MVP)
+[[example]]
+name = "font_dsl_demo"
+path = "examples/font_dsl_demo/main.rs"
+required-features = ["serde"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.bench]
+inherits = "release"

@@ -1,0 +1,103 @@
+name: Fuzz
+
+# ALICE-SDF v1.7.7 (commit 52d26f9) を base に ALICE-Font 用に調整
+#
+# 目的:
+# - 3 fuzz target (fuzz_font_license_decode / fuzz_glyph_render / fuzz_dsl_lookup)
+#   を time-boxed で並列実行
+# - FontLicense::decode / GlyphGenerator::generate / font_dsl::dsl_lookup が
+#   arbitrary input で panic しないことを検証
+#
+# 罠:
+# - cargo-fuzz は nightly toolchain 必須 (rust-toolchain.toml pin を上書き)
+#
+
+on:
+  push:
+    branches: [main, 'ci/**']
+    paths:
+      - 'src/**'
+      - 'fuzz/**'
+      - '.github/workflows/fuzz.yml'
+      - '.github/actions/**'
+  schedule:
+    # 毎日 03:00 UTC = 12:00 JST (idle 時間帯)
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      duration_seconds:
+        description: 'Per-target fuzz duration (seconds)'
+        required: false
+        default: '60'
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: Fuzz — ${{ matrix.target }}
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_font_license_decode
+          - fuzz_glyph_render
+          - fuzz_dsl_lookup
+    steps:
+      - uses: actions/checkout@v5
+
+      # cargo-fuzz は nightly toolchain 必須
+      #
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+        with:
+          workspaces: fuzz
+
+      - name: Install cargo-fuzz
+        run: command -v cargo-fuzz >/dev/null || cargo install cargo-fuzz --locked
+
+      # build は blocking: compile error を continue-on-error で隠さない
+      - name: Build fuzz target
+        run: |
+          cd fuzz
+          cargo +nightly fuzz build "${{ matrix.target }}"
+
+      - name: Set fuzz duration
+        id: dur
+        run: |
+          DURATION="${{ github.event.inputs.duration_seconds }}"
+          if [ -z "$DURATION" ]; then
+            DURATION=60
+          fi
+          echo "seconds=$DURATION" >> "$GITHUB_OUTPUT"
+
+      # run は informational: crash 発見は block せず artifact で triage
+      - name: Run fuzz target (time-boxed)
+        id: run
+        continue-on-error: true
+        run: |
+          cd fuzz
+          cargo +nightly fuzz run "${{ matrix.target }}" -- \
+            -max_total_time=${{ steps.dur.outputs.seconds }}
+
+      - name: Upload crash artifacts (if any)
+        if: steps.run.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Report crash (informational)
+        if: steps.run.outcome == 'failure'
+        run: echo "::warning::fuzz target ${{ matrix.target }} found a crash — see fuzz-crash-${{ matrix.target }} artifact"

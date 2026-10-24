@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>ALICE-Font multi-outline text PoC — {{TEXT}}</title>
+<style>
+  body {
+    margin: 0; padding: 24px; background: #0f172a; color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+  }
+  h1 { font-size: 18px; font-weight: 500; margin: 0; }
+  .meta { font-size: 12px; opacity: 0.7; }
+  canvas { border: 1px solid #334155; background: #0f172a; max-width: 100%; }
+  .footer { font-size: 11px; opacity: 0.5; text-align: center; line-height: 1.6; max-width: 640px; }
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>ALICE-Font S6.3.3 v0.6.4 — instanced multi-outline text PoC (aspect-fit + descender pad)</h1>
+<div class="meta">
+  text = <strong>{{TEXT}}</strong>
+  · glyphs = <code>{{GLYPH_COUNT}}</code>
+  · chunks = <code>{{CHUNK_COUNT}}</code>
+  · draw calls = <code>{{CHUNK_COUNT}}</code> (前 {{GLYPH_COUNT}} → 現 {{CHUNK_COUNT}})
+  · UBO total = <code>{{UBO_TOTAL_BYTES}}B ({{MULTI_UBO_SIZE}} × {{CHUNK_COUNT}})</code>
+  · texture upload = <code>0 byte</code>
+</div>
+<canvas id="text" width="{{CANVAS_W}}" height="{{CANVAS_H}}"></canvas>
+<div class="footer">
+  Instanced outline text rendering: 1 chunk = 1 drawArraysInstanced call、
+  per-instance NDC は vertex shader が gl_InstanceID で uGlyphMetas[i] を参照。<br />
+  Fragment shader は flat uPoints[glyphIdx * 384 + i] winding number test で
+  per-pixel inside/outside 判定。<br />
+  synthetic outline (3 rectangles for 三 等)、実 BIZ UDPGothic は outline provider (L1) 経由。<br />
+  ALICE-Font v0.6.4 · S6.3.3 (multi-outline instanced、384 pt × 4 glyph、aspect-fit + descender pad)
+</div>
+
+<script id="vert-shader" type="x-shader/x-vertex">
+{{VERT_SHADER}}
+</script>
+<script id="frag-shader" type="x-shader/x-fragment">
+{{FRAG_SHADER}}
+</script>
+
+<script>
+"use strict";
+const UBO_CHUNKS = {{UBO_CHUNKS_JSON}};
+const INSTANCE_COUNTS = {{INSTANCE_COUNTS_JSON}};
+const MULTI_UBO_SIZE = {{MULTI_UBO_SIZE}};
+
+const canvas = document.getElementById("text");
+const gl = canvas.getContext("webgl2");
+if (!gl) { alert("WebGL2 required"); throw new Error("no webgl2"); }
+
+function compile(kind, src, name) {
+  const s = gl.createShader(kind);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s);
+    document.body.innerHTML = "<pre style='color:#f87171'>" + name + " compile fail:\n" + log + "</pre>";
+    throw new Error(name + " compile fail");
+  }
+  return s;
+}
+const vs = compile(gl.VERTEX_SHADER, document.getElementById("vert-shader").textContent.trim(), "vertex");
+const fs = compile(gl.FRAGMENT_SHADER, document.getElementById("frag-shader").textContent.trim(), "fragment");
+const prog = gl.createProgram();
+gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  document.body.innerHTML = "<pre style='color:#f87171'>link fail:\n" + gl.getProgramInfoLog(prog) + "</pre>";
+  throw new Error("link fail");
+}
+gl.useProgram(prog);
+
+const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+const posLoc = gl.getAttribLocation(prog, "aQuadPos");
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+gl.uniform4f(gl.getUniformLocation(prog, "uFgColor"), 0.925, 0.933, 0.945, 1.0);
+gl.uniform4f(gl.getUniformLocation(prog, "uBgColor"), 0.059, 0.090, 0.165, 0.0);
+gl.uniform1f(gl.getUniformLocation(prog, "uAntiAlias"), 0.004);
+// v0.6.4: canvas layout uniforms (aspect-fit + descender padding)
+gl.uniform2f(gl.getUniformLocation(prog, "uCanvasSize"), canvas.width, canvas.height);
+gl.uniform1f(gl.getUniformLocation(prog, "uYPadding"), {{Y_PAD_EM}});
+
+const BINDING = 0;
+const blockIdx = gl.getUniformBlockIndex(prog, "MultiOutlineBlock");
+if (blockIdx === gl.INVALID_INDEX) throw new Error("MultiOutlineBlock not found");
+gl.uniformBlockBinding(prog, blockIdx, BINDING);
+
+const ubo = gl.createBuffer();
+gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+gl.bufferData(gl.UNIFORM_BUFFER, MULTI_UBO_SIZE, gl.STREAM_DRAW);
+gl.bindBufferBase(gl.UNIFORM_BUFFER, BINDING, ubo);
+
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.clearColor(0.059, 0.090, 0.165, 1.0);
+gl.clear(gl.COLOR_BUFFER_BIT);
+gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+for (let ci = 0; ci < UBO_CHUNKS.length; ci++) {
+  const bytes = new Uint8Array(UBO_CHUNKS[ci]);
+  console.assert(bytes.length === MULTI_UBO_SIZE, "chunk must be " + MULTI_UBO_SIZE + "B");
+  gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+  gl.bufferSubData(gl.UNIFORM_BUFFER, 0, bytes);
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, INSTANCE_COUNTS[ci]);
+}
+console.info("multi-outline text rendered:", {{GLYPH_COUNT}}, "glyphs in", UBO_CHUNKS.length, "draw call(s)");
+</script>
+</body>
+</html>

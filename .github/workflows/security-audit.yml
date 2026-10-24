@@ -1,0 +1,190 @@
+name: Security & Hygiene
+
+# ALICE-SDF v1.7.7 (commit 52d26f9) を base に ALICE-Font 用に調整
+#
+# 目的:
+# - RustSec advisory (CVE) の週次検知
+# - dep license 逸脱の block
+# - 未使用依存の炙り出し
+# - 仮実装 (todo! / unimplemented! / panic!(STUB) / dbg!) の CI gate
+
+on:
+  push:
+    branches: [main, 'ci/**']
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+      - 'deny.toml'
+      - '.github/workflows/security-audit.yml'
+      - '.github/actions/**'
+      - 'examples/*/Cargo.toml'
+      - 'bindings/*/Cargo.toml'
+      - 'bindings/*/*/Cargo.toml'
+  schedule:
+    # 毎週月曜 09:00 UTC = 18:00 JST
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "5"
+  CARGO_HTTP_MULTIPLEXING: "false"
+
+jobs:
+  audit:
+    name: cargo audit (RustSec CVE scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+
+      - name: Install cargo-audit
+        run: command -v cargo-audit >/dev/null || cargo install cargo-audit --locked
+
+      # advisory-db は audit 実行時に自動取得
+      # yanked crate は deny、unmaintained warning は個別 ignore で管理
+      # 現在の ignore 対象:
+      # - RUSTSEC-2025-0020: pyo3 0.22 PyString::from_object buffer overflow
+      # - RUSTSEC-2026-0176: pyo3 0.22 nth/nth_back OOB
+      # - RUSTSEC-2026-0177: pyo3 0.22 PyCFunction::new_closure Sync 欠落
+      # - RUSTSEC-2025-0141: bincode 2.x unmaintained (transitive)
+      # - RUSTSEC-2024-0436: paste 1.0.15 unmaintained (pyo3-macros transitive)
+      # (deny.toml と同期、pyo3 0.29 移行完了時に pyo3 系 ignore は削除)
+      - name: Run cargo audit
+        run: |
+          cargo audit \
+            --deny yanked \
+            --ignore RUSTSEC-2025-0020 \
+            --ignore RUSTSEC-2026-0176 \
+            --ignore RUSTSEC-2026-0177 \
+            --ignore RUSTSEC-2025-0141 \
+            --ignore RUSTSEC-2024-0436
+
+  deny:
+    name: cargo-deny (license + advisories + bans + sources)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+
+      # EmbarkStudios/cargo-deny-action@v2 は Docker container 内で稼働し、
+      # /github/workspace のみ mount するため sibling path dep が見えず fail する
+      # 直接 install で回避
+      - name: Install cargo-deny
+        run: command -v cargo-deny >/dev/null || cargo install cargo-deny --locked
+
+      - name: Run cargo deny check all
+        run: cargo deny --all-features check all
+
+  unused-deps:
+    name: cargo-machete (unused dependencies)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+
+      # false-positive は Cargo.toml の [package.metadata.cargo-machete] ignored で除外
+      - run: command -v cargo-machete >/dev/null || cargo install cargo-machete --locked
+      - run: cargo machete
+
+  stub-guard:
+    name: Stub / mock / dbg guard (grep)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+
+      # canonical trap #9-c: todo!() / unimplemented!() は legitimate な fail-fast idiom
+      # として endorse されているため informational warn のみ、block しない
+      - name: Detect panic!(STUB) in src/** (block)
+        run: |
+          set -eo pipefail
+          # STUB (uppercase) explicit marker のみを block
+          hits=$(grep -rnE 'panic!\([^)]*STUB' \
+            src/ --include="*.rs" \
+            --exclude-dir=bin \
+            | grep -v ':[[:space:]]*//' \
+            | grep -vE ':[[:space:]]*/\*' \
+            || true)
+          if [ -n "$hits" ]; then
+            echo "❌ panic!(STUB...) detected in src/ (production path):"
+            echo "$hits"
+            echo ""
+            echo "Fix: implement the missing feature or migrate to todo!()/unimplemented!()"
+            echo "     with a documented Phase / issue reference."
+            exit 1
+          fi
+          echo "✓ No panic!(STUB) in src/ (excluding src/bin/)"
+
+      - name: Detect dbg!() residual in src/** (block)
+        run: |
+          set -eo pipefail
+          hits=$(grep -rn 'dbg!(' src/ --include="*.rs" || true)
+          if [ -n "$hits" ]; then
+            echo "❌ dbg!() macro left in src/:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "✓ No dbg!() in src/"
+
+      - name: Detect todo! / unimplemented! (informational)
+        run: |
+          set -eo pipefail
+          hits=$(grep -rnE 'todo!\(|unimplemented!\(' src/ --include="*.rs" \
+            --exclude-dir=bin \
+            | grep -v ':[[:space:]]*//' \
+            | grep -vE ':[[:space:]]*/\*' \
+            || true)
+          if [ -n "$hits" ]; then
+            count=$(echo "$hits" | wc -l | tr -d ' ')
+            echo "::warning::${count} todo!/unimplemented! marker(s) found in src/ (informational, legitimate fail-fast idiom):"
+            echo "$hits" | head -50
+          else
+            echo "✓ No todo!/unimplemented! in src/"
+          fi
+
+      - name: Detect TODO / FIXME / XXX / HACK (informational)
+        run: |
+          set -eo pipefail
+          hits=$(grep -rnE 'TODO|FIXME|XXX|HACK' src/ --include="*.rs" || true)
+          if [ -n "$hits" ]; then
+            echo "::warning::TODO/FIXME/XXX/HACK found in src/ (informational, not blocking):"
+            echo "$hits" | head -50
+          else
+            echo "✓ No TODO/FIXME/XXX/HACK in src/"
+          fi
+
+  coverage:
+    name: Coverage (cargo-llvm-cov、informational)
+    runs-on: ubuntu-24.04-arm
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Run coverage
+        run: |
+          cargo llvm-cov --lib --summary-only 2>&1 | tee coverage-summary.txt
+
+      - name: Upload coverage summary as artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-summary
+          path: coverage-summary.txt
+          retention-days: 30
+

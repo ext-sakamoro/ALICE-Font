@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>ALICE-Font instanced multi-kanji UBO PoC (v0.5.3) — {{TEXT}}</title>
+<style>
+  body {
+    margin: 0;
+    padding: 24px;
+    background: #0f172a;
+    color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  h1 { font-size: 18px; font-weight: 500; }
+  .meta { font-size: 12px; opacity: 0.7; }
+  canvas {
+    border: 1px solid #334155;
+    background: #0f172a;
+    image-rendering: pixelated;
+    max-width: 100%;
+  }
+  .footer {
+    font-size: 11px;
+    opacity: 0.5;
+    text-align: center;
+    line-height: 1.6;
+  }
+  code {
+    background: #1e293b;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<h1>ALICE-Font S6.3.2b.3 — instanced multi-kanji UBO fragment-shader PoC</h1>
+<div class="meta">
+  text = <strong>{{TEXT}}</strong>
+  · glyphs = <code>{{GLYPH_COUNT}}</code>
+  · chunks = <code>{{CHUNK_COUNT}}</code>
+  · draw calls = <code>{{CHUNK_COUNT}}</code> (前 {{GLYPH_COUNT}} → 現 {{CHUNK_COUNT}})
+  · UBO total = <code>{{UBO_TOTAL_BYTES}} byte (12,816 × {{CHUNK_COUNT}})</code>
+  · texture upload = <code>0 byte</code>
+  · total advance = <code>{{TOTAL_ADVANCE}} em</code>
+</div>
+<canvas id="text" width="{{CANVAS_W}}" height="{{CANVAS_H}}"></canvas>
+<div class="footer">
+  Instanced multi-kanji layout: 1 chunk = 1 drawArraysInstanced call、
+  per-instance NDC 配置は vertex shader が gl_InstanceID で per-glyph
+  meta.x_offset / advance を UBO から index して計算。<br />
+  bitmap / atlas / TTF outline data 一切なし。<br />
+  「データを送るな、法則を送れ」ALICE-Font v0.5.3 · S6.3.2b.3 (instanced rendering)
+</div>
+
+<script id="vert-shader" type="x-shader/x-vertex">
+{{VERT_SHADER}}
+</script>
+
+<script id="frag-shader" type="x-shader/x-fragment">
+{{FRAG_SHADER}}
+</script>
+
+<script>
+"use strict";
+
+// ===========================================================================
+// Payload injected by cargo run --example analytical_shader_multi_poc。
+// - UBO_CHUNKS: Array<Array<u8>> — 各 chunk = 12,816 byte std140 UBO bytes
+// - INSTANCE_COUNTS: Array<int> — 各 chunk の drawArraysInstanced 用 instance count
+// ===========================================================================
+const UBO_CHUNKS = {{UBO_CHUNKS_JSON}};
+const INSTANCE_COUNTS = {{INSTANCE_COUNTS_JSON}};
+
+// ===========================================================================
+// WebGL2 bootstrap
+// ===========================================================================
+const canvas = document.getElementById("text");
+const gl = canvas.getContext("webgl2");
+if (!gl) {
+  alert("WebGL2 が使えません。Chrome / Firefox / Safari 最新版で開いてください。");
+  throw new Error("no webgl2");
+}
+
+function compileShader(kind, src) {
+  const s = gl.createShader(kind);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s);
+    console.error("shader compile fail:", log);
+    document.body.innerHTML = "<pre style='color: #f87171'>shader compile fail:\n" + log + "</pre>";
+    throw new Error("shader compile fail");
+  }
+  return s;
+}
+
+const vertSrc = document.getElementById("vert-shader").textContent.trim();
+const fragSrc = document.getElementById("frag-shader").textContent.trim();
+const vs = compileShader(gl.VERTEX_SHADER, vertSrc);
+const fs = compileShader(gl.FRAGMENT_SHADER, fragSrc);
+const prog = gl.createProgram();
+gl.attachShader(prog, vs);
+gl.attachShader(prog, fs);
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  const log = gl.getProgramInfoLog(prog);
+  console.error("link fail:", log);
+  document.body.innerHTML = "<pre style='color: #f87171'>program link fail:\n" + log + "</pre>";
+  throw new Error("link fail");
+}
+gl.useProgram(prog);
+
+// ===========================================================================
+// Base quad geometry (-1..1 × -1..1)、全 instance 共通。
+// ===========================================================================
+const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+const posLoc = gl.getAttribLocation(prog, "aQuadPos");
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+// ===========================================================================
+// Common uniforms (色 + AA、全 chunk 共通)。
+// ===========================================================================
+gl.uniform4f(gl.getUniformLocation(prog, "uFgColor"), 0.925, 0.933, 0.945, 1.0);
+gl.uniform4f(gl.getUniformLocation(prog, "uBgColor"), 0.059, 0.090, 0.165, 0.0);
+gl.uniform1f(gl.getUniformLocation(prog, "uAntiAlias"), 0.003);
+
+// ===========================================================================
+// UBO block binding (chunk 毎に bufferSubData で内容 update)。
+// ===========================================================================
+const BINDING_POINT = 0;
+const blockIndex = gl.getUniformBlockIndex(prog, "MultiGlyphBlock");
+if (blockIndex === gl.INVALID_INDEX) {
+  throw new Error("uniform block 'MultiGlyphBlock' not found in shader");
+}
+gl.uniformBlockBinding(prog, blockIndex, BINDING_POINT);
+
+const MULTI_UBO_SIZE = 12816;
+const ubo = gl.createBuffer();
+gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+gl.bufferData(gl.UNIFORM_BUFFER, MULTI_UBO_SIZE, gl.STREAM_DRAW);
+gl.bindBufferBase(gl.UNIFORM_BUFFER, BINDING_POINT, ubo);
+
+// ===========================================================================
+// Draw loop (per chunk = 1 drawArraysInstanced call)。
+// ===========================================================================
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.clearColor(0.059, 0.090, 0.165, 1.0);
+gl.clear(gl.COLOR_BUFFER_BIT);
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+let totalDrawCalls = 0;
+for (let ci = 0; ci < UBO_CHUNKS.length; ci++) {
+  const chunkBytes = new Uint8Array(UBO_CHUNKS[ci]);
+  const instanceCount = INSTANCE_COUNTS[ci];
+  console.assert(chunkBytes.length === MULTI_UBO_SIZE, "chunk must be 12816B");
+
+  // UBO update (chunk 内容書き換え)。
+  gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+  gl.bufferSubData(gl.UNIFORM_BUFFER, 0, chunkBytes);
+
+  // 1 draw call で instanceCount glyph を並列 render。
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, instanceCount);
+  totalDrawCalls++;
+}
+
+console.info(
+  "ALICE-Font instanced multi-kanji UBO PoC — rendered", {{GLYPH_COUNT}}, "glyphs",
+  "via", totalDrawCalls, "drawArraysInstanced calls (前", {{GLYPH_COUNT}}, "per-glyph draws),",
+  "UBO total:", {{UBO_TOTAL_BYTES}}, "byte, texture upload: 0 byte"
+);
+</script>
+</body>
+</html>

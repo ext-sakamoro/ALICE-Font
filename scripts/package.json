@@ -1,0 +1,17 @@
+{
+  "name": "scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "LicenseRef-Proprietary",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.62.0"
+  }
+}

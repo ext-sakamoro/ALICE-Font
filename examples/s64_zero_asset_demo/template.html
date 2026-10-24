@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>ALICE-Font S6.4 v0.7.0 — zero-asset parametric CJK demo ({{TEXT}})</title>
+<style>
+  body {
+    margin: 0; padding: 24px; background: #0f172a; color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    display: flex; flex-direction: column; align-items: center; gap: 16px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 20px; font-weight: 500; margin: 0; text-align: center; }
+  .subtitle { font-size: 12px; opacity: 0.6; text-align: center; max-width: 720px; }
+  .meta { font-size: 12px; opacity: 0.75; text-align: center; max-width: 720px; }
+  canvas { border: 1px solid #334155; background: #0f172a; max-width: 100%; }
+  .footer { font-size: 11px; opacity: 0.5; text-align: center; line-height: 1.6; max-width: 720px; padding-top: 12px; border-top: 1px solid #1e293b; }
+  code { background: #1e293b; padding: 2px 6px; border-radius: 4px; }
+  .badge { display: inline-block; background: #0891b2; color: #cffafe; padding: 2px 10px; border-radius: 999px; font-size: 11px; margin: 0 4px; }
+</style>
+</head>
+<body>
+<h1>ALICE-Font S6.4 v0.7.0-alpha — <span class="badge">zero-asset</span> parametric CJK demo</h1>
+<div class="subtitle">
+  Procedurally generated from 214 CJK radicals + IDS decomposition rules,
+  rendered by fragment shader per-pixel Bezier distance evaluation.<br />
+  <strong>Zero texture upload</strong>, zero embedded outline data.<br />
+  <em>Alpha status: ~73 kanji currently render as real strokes (curated below).
+  Remaining ~980 KANJI_DB entries need further radical + IDS decomposition
+  work — pending v0.7.x-v0.8.x releases.</em>
+</div>
+
+<div class="meta">
+  text = <strong>{{TEXT}}</strong>
+  · glyphs = <code>{{GLYPH_COUNT}}</code>
+  · chunks = <code>{{CHUNK_COUNT}}</code>
+  · UBO total = <code>{{UBO_TOTAL_BYTES}}B</code>
+  · texture upload = <code>0 byte</code>
+</div>
+
+<canvas id="text" width="{{CANVAS_W}}" height="{{CANVAS_H}}"></canvas>
+
+<div class="footer">
+  <strong>データを送るな、法則を送れ (Don't ship data. Ship laws.)</strong> — the ALICE core principle.<br />
+  Each glyph is composed at build time from 214 CJK radical Bezier skeletons
+  via IDS (Ideographic Description Sequence) decomposition rules
+  (`⿰⿱⿲⿳⿴⿵⿶⿷⿸⿹⿺⿻`). The runtime evaluates strokes as cubic
+  Bezier + variable-width pen SDF, per-pixel, analytically.<br />
+  Payload: shader source + skeleton UBO + HTML. Runtime texture = 0 byte.<br />
+  Curated 27-kanji subset above: showcases variety of stroke complexity
+  (1-stroke 一 to 13-stroke 感). Real BIZ UDPGothic quality output is on
+  the outline path (an outline provider), which coexists with this
+  zero-asset path.<br />
+  ALICE-Font v0.7.0-alpha · S6.4 infrastructure (parametric skeleton shader path)
+</div>
+
+<script id="vert-shader" type="x-shader/x-vertex">
+{{VERT_SHADER}}
+</script>
+<script id="frag-shader" type="x-shader/x-fragment">
+{{FRAG_SHADER}}
+</script>
+
+<script>
+"use strict";
+const UBO_CHUNKS = {{UBO_CHUNKS_JSON}};
+const INSTANCE_COUNTS = {{INSTANCE_COUNTS_JSON}};
+const MULTI_UBO_SIZE = {{MULTI_UBO_SIZE}};
+const Y_PAD_EM = {{Y_PAD_EM}};
+
+const canvas = document.getElementById("text");
+const gl = canvas.getContext("webgl2");
+if (!gl) { alert("WebGL2 required"); throw new Error("no webgl2"); }
+
+function compile(kind, src, name) {
+  const s = gl.createShader(kind);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(s);
+    document.body.innerHTML = "<pre style='color:#f87171'>" + name + " compile fail:\n" + log + "</pre>";
+    throw new Error(name + " compile fail");
+  }
+  return s;
+}
+const vs = compile(gl.VERTEX_SHADER, document.getElementById("vert-shader").textContent.trim(), "vertex");
+const fs = compile(gl.FRAGMENT_SHADER, document.getElementById("frag-shader").textContent.trim(), "fragment");
+const prog = gl.createProgram();
+gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  document.body.innerHTML = "<pre style='color:#f87171'>link fail:\n" + gl.getProgramInfoLog(prog) + "</pre>";
+  throw new Error("link fail");
+}
+gl.useProgram(prog);
+
+const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+const posLoc = gl.getAttribLocation(prog, "aQuadPos");
+gl.enableVertexAttribArray(posLoc);
+gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+
+gl.uniform4f(gl.getUniformLocation(prog, "uFgColor"), 0.925, 0.933, 0.945, 1.0);
+gl.uniform4f(gl.getUniformLocation(prog, "uBgColor"), 0.059, 0.090, 0.165, 0.0);
+gl.uniform1f(gl.getUniformLocation(prog, "uAntiAlias"), 0.006);
+gl.uniform2f(gl.getUniformLocation(prog, "uCanvasSize"), canvas.width, canvas.height);
+gl.uniform1f(gl.getUniformLocation(prog, "uYPadding"), Y_PAD_EM);
+
+const BINDING = 0;
+const blockIdx = gl.getUniformBlockIndex(prog, "MultiSkeletonBlock");
+if (blockIdx === gl.INVALID_INDEX) throw new Error("MultiSkeletonBlock not found");
+gl.uniformBlockBinding(prog, blockIdx, BINDING);
+
+const ubo = gl.createBuffer();
+gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+gl.bufferData(gl.UNIFORM_BUFFER, MULTI_UBO_SIZE, gl.STREAM_DRAW);
+gl.bindBufferBase(gl.UNIFORM_BUFFER, BINDING, ubo);
+
+gl.viewport(0, 0, canvas.width, canvas.height);
+gl.clearColor(0.059, 0.090, 0.165, 1.0);
+gl.clear(gl.COLOR_BUFFER_BIT);
+gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+for (let ci = 0; ci < UBO_CHUNKS.length; ci++) {
+  const bytes = new Uint8Array(UBO_CHUNKS[ci]);
+  console.assert(bytes.length === MULTI_UBO_SIZE, "chunk must be " + MULTI_UBO_SIZE + "B");
+  gl.bindBuffer(gl.UNIFORM_BUFFER, ubo);
+  gl.bufferSubData(gl.UNIFORM_BUFFER, 0, bytes);
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, INSTANCE_COUNTS[ci]);
+}
+console.info("zero-asset parametric CJK rendered:", {{GLYPH_COUNT}}, "glyphs in", UBO_CHUNKS.length, "draw call(s), zero texture upload");
+</script>
+</body>
+</html>
