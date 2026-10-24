@@ -12,6 +12,9 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 
+[dependencies.alice-sfnt]
+path = "../crates/alice-sfnt"
+
 [dependencies.alice-font]
 path = ".."
 default-features = false
@@ -45,3 +48,10 @@ doc = false
 
 [workspace]
 members = ["."]
+
+# alice_sfnt::Font (parse / glyph_index / glyph_variation / outline / advance) on arbitrary font bytes; seeds in
+# seeds/fuzz_sfnt_font/, a crash fails the job
+[[bin]]
+name = "fuzz_sfnt_font"
+path = "fuzz_targets/fuzz_sfnt_font.rs"
+doc = false

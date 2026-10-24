@@ -86,6 +86,12 @@ CJK では同じ呼び出しが `cjk::ids_db` + `cjk::radicals` +
 | [`game`] | `TextEffect` — outline / shadow / glow / gradient / dissolve / … の canonical spec |
 | [`license`] | font-license tracking (per-title, platform, seat-limit、32-byte wire format) |
 
+## Workspace の crate
+
+| Crate | 説明 |
+|-------|------|
+| [`crates/alice-sfnt`](crates/alice-sfnt) | import tool 向けに TrueType / OpenType の file を読む: table directory と collection、`cmap` (format 0, 4, 6, 10, 12, 13, 14)、`glyf` / `loca`、`CFF` / `CFF2` の輪郭、`hmtx` すべての count を読む前に残りの byte で確かめ、失敗はすべて `Result` (panic しない) `alice-font` はこれに依存しない |
+
 ## 現在の状態 (v0.7.0-alpha)
 
 - **S6.2.1 完了** — 教育漢字 grade 1-6 全 1,026 IDS 完了 (v0.4.6)

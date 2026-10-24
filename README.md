@@ -90,6 +90,12 @@ and the union is returned as a `GlyphSdf`.
 | [`license`] | Font-license tracking (per-title, platform, seat-limit, 32-byte wire format) |
 | [`sdf_bridge`] (feature `sdf`) | `Stroke` / `GlyphSkeleton` → `alice_sdf::Sdf2dNode` parametric adapter (Milestone A.3、2026-08-06) |
 
+## Workspace crates
+
+| Crate | Description |
+|-------|-------------|
+| [`crates/alice-sfnt`](crates/alice-sfnt) | Reads TrueType / OpenType files for import tools: table directory and collections, `cmap` (formats 0, 4, 6, 10, 12, 13, 14), `glyf` / `loca`, `CFF` / `CFF2` outlines, `hmtx`. Every count is checked against the bytes left before it is read and every failure is a `Result`; nothing panics. `alice-font` does not depend on it. |
+
 ### `sdf` feature — ALICE-SDF bridge (Milestone A.3、2026-08-06)
 
 `Stroke` / `GlyphSkeleton` (parametric Bezier stroke) を `alice_sdf::Sdf2dNode::Bezier` に変換する adapter。**GlyphSdf (64x64 bitmap) ではなく parametric な skeleton path を SDF に落とす** = 「データを送るな、法則を送れ」原則準拠の law-only path。

@@ -75,6 +75,7 @@ jobs:
           - fuzz_font_license_decode
           - fuzz_glyph_render
           - fuzz_dsl_lookup
+          - fuzz_sfnt_font
     steps:
       - uses: actions/checkout@v5
 
@@ -106,13 +107,20 @@ jobs:
           fi
           echo "seconds=$DURATION" >> "$GITHUB_OUTPUT"
 
-      # run は informational: crash 発見は block せず artifact で triage
+      # run は informational: crash 発見は block せず artifact で triage (fuzz_sfnt_font は crash で失敗する)
+      # seeds/<target>/ があれば corpus に足す (書き込みは corpus/<target>/ だけ)
       - name: Run fuzz target (time-boxed)
         id: run
-        continue-on-error: true
+        continue-on-error: ${{ matrix.target != 'fuzz_sfnt_font' }}
         run: |
           cd fuzz
-          cargo +nightly fuzz run "${{ matrix.target }}" -- \
+          corpus="corpus/${{ matrix.target }}"
+          mkdir -p "$corpus"
+          set -- "$corpus"
+          if [ -d "seeds/${{ matrix.target }}" ]; then
+            set -- "$@" "seeds/${{ matrix.target }}"
+          fi
+          cargo +nightly fuzz run "${{ matrix.target }}" "$@" -- \
             -max_total_time=${{ steps.dur.outputs.seconds }}
 
       - name: Upload crash artifacts (if any)

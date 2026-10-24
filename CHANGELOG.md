@@ -6,6 +6,8 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Added
 
+- workspace の crate `crates/alice-sfnt` (0.1.0、`no_std` + `alloc`、依存なし): TrueType / OpenType の file を読む `Font::parse(data, index)` (`ttcf` の collection、`fonts_in`)、`glyph_index` (cmap format 0 / 4 / 6 / 10 / 12 / 13)、`glyph_variation` (format 14)、`outline(gid, &mut dyn OutlineSink)` (`glyf` / `loca` の二次曲線と composite、`CFF` / `CFF2` の Type 2 charstring、CFF2 は既定の instance)、`advance` (`hmtx`)、`Contours` (輪郭を集める sink) すべての count と offset を読む前に残りの byte で確かめ (u64 で計算)、composite の深さ 32、subroutine の深さ 10、operand stack (CFF 48 / CFF2 513)、1 glyph の命令数 2^20 を上限にし、失敗は `Error { kind, context }` 試験: 自作の font (`tests/fonts/make_test_fonts.py` が fontTools で描く) の輪郭・cmap・advance を描いた図形と照合 (`tests/oracle.rs`)、ttf-parser 0.25 との差分 (`tests/differential.rs`、`ALICE_SFNT_SYSTEM_FONTS=1` で system の font も)、全ての切り詰めで panic しない
+- fuzz target `fuzz_sfnt_font` (`alice_sfnt::Font` の全 API、seed は `fuzz/seeds/fuzz_sfnt_font/`)、Fuzz workflow は `seeds/<target>/` を corpus に足し、`fuzz_sfnt_font` は crash で失敗する
 - `outline::rasterize(&OutlineGlyph) -> Result<GlyphSdf, RasterizeError>`: contour から `GLYPH_SDF_SIZE`² の符号付き距離 (em) を作る 塗りは non-zero winding、距離は塗った領域の境界まで (重なった contour の内側の辺は使わない)、`f64` と `alice_det_math::ops::sqrt64` で計算
 - `outline::RasterizeError` と上限 `RASTER_MAX_POINTS` (4096) / `RASTER_MAX_CONTOURS` (256) / `RASTER_MAX_PIECES` (8192、辺を交点で切った片の数): 非有限の座標・advance と上限を超える outline は rasterise せず error を返す
 - `outline::TILE_EM_LEFT` / `TILE_EM_RIGHT` / `TILE_EM_BOTTOM` / `TILE_EM_TOP` (tile の範囲 0.0 / 1.0 / -0.2 / 0.9)
@@ -14,6 +16,8 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Changed
 
+- `Cargo.toml` に `[workspace]` (members `.` と `crates/alice-sfnt`、`fuzz` と `tools/render-ref` は除外)
+- `.github/paths/fuzz.txt` に `crates/alice-sfnt/**`、`.github/paths/security-audit.txt` に `crates/*/Cargo.toml` と `crates/*/src/**`
 - Licence: `AGPL-3.0-only OR LicenseRef-Commercial` → `LicenseRef-Proprietary`
 - `publish = false`、authors からアドレスを削除
 - `LICENSE-AGPL` / `LICENSE-COMMERCIAL.md` / `LICENSE-MIT-HISTORICAL` / `LICENSES/BIZUDPGothic-OFL.txt` を削除し `LICENSE-Proprietary` を追加、`TRADEMARK_NOTICE` を変更

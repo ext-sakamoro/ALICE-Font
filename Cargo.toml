@@ -26,6 +26,11 @@ serde = ["dep:serde", "std"]
 # alice-sdf の font feature (marker) と対称、crates.io 2.x dep (2026-09-16、path dep から移行)
 sdf = ["dep:alice-sdf", "std"]
 
+[workspace]
+members = [".", "crates/alice-sfnt"]
+# fuzz/ and tools/render-ref are packages of their own (built on their own, not with the workspace)
+exclude = ["fuzz", "tools/render-ref"]
+
 [dependencies]
 pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
 serde = { version = "1", optional = true, features = ["derive"] }
