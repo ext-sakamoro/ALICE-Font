@@ -35,6 +35,80 @@ pub const TILE_EM_BOTTOM: f32 = -0.2;
 /// Top edge of the tile, em
 pub const TILE_EM_TOP: f32 = 0.9;
 
+/// Most points (over all contours) [`rasterize`] accepts
+///
+/// Finding where the edges meet is O(E²) in the number of edges E.
+pub const RASTER_MAX_POINTS: usize = 4096;
+
+/// Most edge pieces (the edges cut at every point where they meet another) [`rasterize`] accepts
+///
+/// Each piece is classified in O(E) and each sample measures O(pieces), so the pieces bound the
+/// cost of an outline whose edges cross many times; an outline with fewer crossings has about one
+/// piece per edge.
+pub const RASTER_MAX_PIECES: usize = 8192;
+
+/// Most contours [`rasterize`] accepts
+pub const RASTER_MAX_CONTOURS: usize = 256;
+
+/// Why [`rasterize`] refused an outline
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RasterizeError {
+    /// A coordinate is NaN or infinite
+    NonFinite {
+        /// index of the contour
+        contour: usize,
+        /// index of the point in that contour
+        point: usize,
+    },
+    /// The advance is NaN or infinite
+    NonFiniteAdvance,
+    /// More points than [`RASTER_MAX_POINTS`]
+    TooManyPoints {
+        /// points in the outline
+        points: usize,
+        /// the cap
+        max: usize,
+    },
+    /// More contours than [`RASTER_MAX_CONTOURS`]
+    TooManyContours {
+        /// contours in the outline
+        contours: usize,
+        /// the cap
+        max: usize,
+    },
+    /// More edge pieces than [`RASTER_MAX_PIECES`] (the edges cross too many times)
+    TooManyPieces {
+        /// the cap
+        max: usize,
+    },
+}
+
+impl core::fmt::Display for RasterizeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            Self::NonFinite { contour, point } => {
+                write!(
+                    f,
+                    "outline coordinate is not finite at contour {contour}, point {point}"
+                )
+            }
+            Self::NonFiniteAdvance => write!(f, "outline advance is not finite"),
+            Self::TooManyPoints { points, max } => {
+                write!(f, "outline has {points} points, more than {max}")
+            }
+            Self::TooManyContours { contours, max } => {
+                write!(f, "outline has {contours} contours, more than {max}")
+            }
+            Self::TooManyPieces { max } => {
+                write!(f, "outline edges cross into more than {max} pieces")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for RasterizeError {}
+
 /// Two values closer than this (em) are the same point
 const EPS: f64 = 1e-12;
 
@@ -54,17 +128,23 @@ struct Seg {
 /// row 0 is the bottom. Each contour is closed implicitly (an explicit closing point equal to the
 /// first is also accepted). Negative inside, positive outside, in em. An outline with no filled
 /// region gives every sample `1.0`, as [`GlyphSdf::empty`].
-#[must_use]
-pub fn rasterize(glyph: &OutlineGlyph) -> GlyphSdf {
+///
+/// # Errors
+///
+/// [`RasterizeError`] when a coordinate or the advance is not finite, or the outline has more
+/// than [`RASTER_MAX_POINTS`] points or [`RASTER_MAX_CONTOURS`] contours, or its edges cut into
+/// more than [`RASTER_MAX_PIECES`] pieces. Nothing is rasterised then.
+pub fn rasterize(glyph: &OutlineGlyph) -> Result<GlyphSdf, RasterizeError> {
+    check(glyph)?;
     let mut sdf = GlyphSdf::empty();
     sdf.advance = glyph.advance;
     sdf.bbox_min = Point2::new(TILE_EM_LEFT, TILE_EM_BOTTOM);
     sdf.bbox_max = Point2::new(TILE_EM_RIGHT, TILE_EM_TOP);
 
     let segs = segments(glyph);
-    let boundary = boundary_pieces(&segs);
+    let boundary = boundary_pieces(&segs)?;
     if boundary.is_empty() {
-        return sdf;
+        return Ok(sdf);
     }
 
     let n = GLYPH_SDF_SIZE as f64;
@@ -85,7 +165,36 @@ pub fn rasterize(glyph: &OutlineGlyph) -> GlyphSdf {
             sdf.data[py * GLYPH_SDF_SIZE + px] = signed as f32;
         }
     }
-    sdf
+    Ok(sdf)
+}
+
+/// Refuse what cannot be rasterised correctly or in bounded time
+fn check(glyph: &OutlineGlyph) -> Result<(), RasterizeError> {
+    if glyph.contours.len() > RASTER_MAX_CONTOURS {
+        return Err(RasterizeError::TooManyContours {
+            contours: glyph.contours.len(),
+            max: RASTER_MAX_CONTOURS,
+        });
+    }
+    let points = glyph.total_points();
+    if points > RASTER_MAX_POINTS {
+        return Err(RasterizeError::TooManyPoints {
+            points,
+            max: RASTER_MAX_POINTS,
+        });
+    }
+    if !glyph.advance.is_finite() {
+        return Err(RasterizeError::NonFiniteAdvance);
+    }
+    for (contour, c) in glyph.contours.iter().enumerate() {
+        if let Some(point) = c
+            .iter()
+            .position(|p| !(p[0].is_finite() && p[1].is_finite()))
+        {
+            return Err(RasterizeError::NonFinite { contour, point });
+        }
+    }
+    Ok(())
 }
 
 /// The edges of all contours (each closed), without zero-length edges
@@ -178,9 +287,10 @@ fn cuts(s: &Seg, other: &Seg, out: &mut Vec<f64>) {
 }
 
 /// The pieces of the edges that lie on the boundary of the filled region
-fn boundary_pieces(segs: &[Seg]) -> Vec<Seg> {
+fn boundary_pieces(segs: &[Seg]) -> Result<Vec<Seg>, RasterizeError> {
     let mut out = Vec::new();
     let mut ts = Vec::new();
+    let mut pieces = 0usize;
     for (i, s) in segs.iter().enumerate() {
         ts.clear();
         ts.push(0.0);
@@ -192,6 +302,12 @@ fn boundary_pieces(segs: &[Seg]) -> Vec<Seg> {
         }
         ts.sort_by(f64::total_cmp);
         ts.dedup_by(|b, a| *b - *a <= EPS);
+        pieces += ts.len() - 1;
+        if pieces > RASTER_MAX_PIECES {
+            return Err(RasterizeError::TooManyPieces {
+                max: RASTER_MAX_PIECES,
+            });
+        }
 
         let dx = s.bx - s.ax;
         let dy = s.by - s.ay;
@@ -227,5 +343,5 @@ fn boundary_pieces(segs: &[Seg]) -> Vec<Seg> {
             }
         }
     }
-    out
+    Ok(out)
 }

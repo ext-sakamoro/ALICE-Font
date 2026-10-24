@@ -6,10 +6,11 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Added
 
-- `outline::rasterize(&OutlineGlyph) -> GlyphSdf`: contour から `GLYPH_SDF_SIZE`² の符号付き距離 (em) を作る 塗りは non-zero winding、距離は塗った領域の境界まで (重なった contour の内側の辺は使わない)、`f64` と `alice_det_math::ops::sqrt64` で計算
+- `outline::rasterize(&OutlineGlyph) -> Result<GlyphSdf, RasterizeError>`: contour から `GLYPH_SDF_SIZE`² の符号付き距離 (em) を作る 塗りは non-zero winding、距離は塗った領域の境界まで (重なった contour の内側の辺は使わない)、`f64` と `alice_det_math::ops::sqrt64` で計算
+- `outline::RasterizeError` と上限 `RASTER_MAX_POINTS` (4096) / `RASTER_MAX_CONTOURS` (256) / `RASTER_MAX_PIECES` (8192、辺を交点で切った片の数): 非有限の座標・advance と上限を超える outline は rasterise せず error を返す
 - `outline::TILE_EM_LEFT` / `TILE_EM_RIGHT` / `TILE_EM_BOTTOM` / `TILE_EM_TOP` (tile の範囲 0.0 / 1.0 / -0.2 / 0.9)
 - 依存 `alice-det-math` (git)、`deny.toml` の allow-git に ALICE-DetMath
-- 試験 `tests/outline_raster.rs` (箱の閉じた式、手で書いた和集合の多角形への総当たり、穴、重なり、接する contour、出力の bit の digest)
+- 試験 `tests/outline_raster.rs` (箱の閉じた式、手で書いた和集合の多角形への総当たり、穴、重なり、接する contour、出力の bit の digest) と `tests/outline_raster_input.rs` (非有限の入力と上限)
 
 ### Changed
 

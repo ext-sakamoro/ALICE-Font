@@ -102,15 +102,15 @@ const BOX: [f32; 4] = [0.25, 0.0625, 0.75, 0.6875];
 #[test]
 fn a_box_is_its_closed_form() {
     let [x0, y0, x1, y1] = BOX;
-    let sdf = rasterize(&glyph(vec![rect(x0, y0, x1, y1)]));
+    let sdf = rasterize(&glyph(vec![rect(x0, y0, x1, y1)])).expect("rasterises");
     assert_matches(&sdf, |x, y| box_sdf(x, y, BOX));
 }
 
 #[test]
 fn the_direction_of_a_contour_does_not_matter() {
     let [x0, y0, x1, y1] = BOX;
-    let ccw = rasterize(&glyph(vec![rect(x0, y0, x1, y1)]));
-    let cw = rasterize(&glyph(vec![reversed(rect(x0, y0, x1, y1))]));
+    let ccw = rasterize(&glyph(vec![rect(x0, y0, x1, y1)])).expect("rasterises");
+    let cw = rasterize(&glyph(vec![reversed(rect(x0, y0, x1, y1))])).expect("rasterises");
     assert_eq!(ccw.data, cw.data);
 }
 
@@ -120,8 +120,10 @@ fn an_explicit_closing_point_changes_nothing() {
     let mut closed = rect(x0, y0, x1, y1);
     closed.push(closed[0]);
     assert_eq!(
-        rasterize(&glyph(vec![rect(x0, y0, x1, y1)])).data,
-        rasterize(&glyph(vec![closed])).data
+        rasterize(&glyph(vec![rect(x0, y0, x1, y1)]))
+            .expect("rasterises")
+            .data,
+        rasterize(&glyph(vec![closed])).expect("rasterises").data
     );
 }
 
@@ -132,7 +134,8 @@ fn a_reversed_inner_contour_is_a_hole() {
     let sdf = rasterize(&glyph(vec![
         rect(outer[0], outer[1], outer[2], outer[3]),
         reversed(rect(inner[0], inner[1], inner[2], inner[3])),
-    ]));
+    ]))
+    .expect("rasterises");
     // outside the outer box: its distance; in the hole: the distance to the inner box; in the
     // ring: minus the nearer of the two boundaries
     assert_matches(&sdf, |x, y| box_sdf(x, y, outer).max(-box_sdf(x, y, inner)));
@@ -165,14 +168,14 @@ fn plus_of_two_bars() -> OutlineGlyph {
 
 #[test]
 fn overlapping_contours_measure_to_the_union_boundary() {
-    let sdf = rasterize(&plus_of_two_bars());
+    let sdf = rasterize(&plus_of_two_bars()).expect("rasterises");
     assert_matches(&sdf, |x, y| polygon_sdf(x, y, &PLUS));
 }
 
 #[test]
 fn the_edges_inside_an_overlap_take_no_part() {
     // the same samples measured to every contour edge would differ: the oracle above has teeth
-    let sdf = rasterize(&plus_of_two_bars());
+    let sdf = rasterize(&plus_of_two_bars()).expect("rasterises");
     let mut differs = 0;
     for py in 0..N {
         for px in 0..N {
@@ -189,7 +192,7 @@ fn the_edges_inside_an_overlap_take_no_part() {
 #[test]
 fn the_overlap_itself_is_filled() {
     // winding 2 there: inside under the non-zero rule (even-odd would make it a hole)
-    let sdf = rasterize(&plus_of_two_bars());
+    let sdf = rasterize(&plus_of_two_bars()).expect("rasterises");
     let (px, py) = (
         N / 2,
         ((0.34 - f64::from(TILE_EM_BOTTOM)) / 1.1 * N as f64) as usize,
@@ -218,7 +221,8 @@ fn an_edge_crossed_near_its_end_is_cut_there() {
     let sdf = rasterize(&glyph(vec![
         rect(0.2, 0.1, 0.5, 0.6),
         rect(0.49, 0.2, 0.8, 0.4),
-    ]));
+    ]))
+    .expect("rasterises");
     assert_matches(&sdf, |x, y| polygon_sdf(x, y, &TEE));
 }
 
@@ -228,15 +232,17 @@ fn abutting_contours_share_no_boundary() {
     let sdf = rasterize(&glyph(vec![
         rect(0.2, 0.1, 0.5, 0.6),
         rect(0.5, 0.2, 0.8, 0.4),
-    ]));
+    ]))
+    .expect("rasterises");
     assert_matches(&sdf, |x, y| polygon_sdf(x, y, &TEE));
 }
 
 #[test]
 fn a_contour_drawn_twice_is_the_contour() {
     let [x0, y0, x1, y1] = BOX;
-    let once = rasterize(&glyph(vec![rect(x0, y0, x1, y1)]));
-    let twice = rasterize(&glyph(vec![rect(x0, y0, x1, y1), rect(x0, y0, x1, y1)]));
+    let once = rasterize(&glyph(vec![rect(x0, y0, x1, y1)])).expect("rasterises");
+    let twice =
+        rasterize(&glyph(vec![rect(x0, y0, x1, y1), rect(x0, y0, x1, y1)])).expect("rasterises");
     assert_eq!(once.data, twice.data);
 }
 
@@ -246,19 +252,20 @@ fn a_contour_and_its_reverse_cancel() {
     let sdf = rasterize(&glyph(vec![
         rect(x0, y0, x1, y1),
         reversed(rect(x0, y0, x1, y1)),
-    ]));
+    ]))
+    .expect("rasterises");
     assert!(sdf.data.iter().all(|&v| v == 1.0));
 }
 
 #[test]
 fn an_empty_outline_is_the_empty_glyph() {
-    let sdf = rasterize(&glyph(vec![]));
+    let sdf = rasterize(&glyph(vec![])).expect("rasterises");
     assert_eq!(sdf.data, GlyphSdf::empty().data);
 }
 
 #[test]
 fn the_glyph_carries_its_advance_and_the_tile_frame() {
-    let sdf = rasterize(&plus_of_two_bars());
+    let sdf = rasterize(&plus_of_two_bars()).expect("rasterises");
     assert_eq!(sdf.advance, 0.75);
     assert_eq!(
         (sdf.bbox_min.x, sdf.bbox_min.y),
@@ -299,7 +306,7 @@ const STAR: [[f32; 2]; 10] = [
 
 #[test]
 fn a_star_is_its_brute_force() {
-    let sdf = rasterize(&glyph(vec![STAR.to_vec()]));
+    let sdf = rasterize(&glyph(vec![STAR.to_vec()])).expect("rasterises");
     assert_matches(&sdf, |x, y| polygon_sdf(x, y, &STAR));
 }
 
@@ -309,7 +316,8 @@ fn the_output_bits_are_the_same_on_every_platform() {
     let sdf = rasterize(&glyph(vec![
         STAR.to_vec(),
         rect(BOX[0], BOX[1], BOX[2], BOX[3]),
-    ]));
+    ]))
+    .expect("rasterises");
     assert_eq!(digest(&sdf), STAR_DIGEST, "{:#018x}", digest(&sdf));
 }
 

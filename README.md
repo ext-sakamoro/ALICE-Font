@@ -86,7 +86,7 @@ and the union is returned as a `GlyphSdf`.
 | [`atlas`] | Runtime GPU-friendly SDF tile cache (derived from procedural output; not a shipped asset) |
 | [`shaper`] | Text shaper — kerning, horizontal advance, line layout |
 | [`game`] | `TextEffect` — canonical spec for outline / shadow / glow / gradient / dissolve / … |
-| [`outline`] | `OutlineGlyph` polygon contours — shader packing, and `rasterize` → `GlyphSdf` (exact signed distance to the non-zero-winding region, tile `TILE_EM_*`) |
+| [`outline`] | `OutlineGlyph` polygon contours — shader packing, and `rasterize` → `Result<GlyphSdf, RasterizeError>` (exact signed distance to the non-zero-winding region, tile `TILE_EM_*`; refuses non-finite input and outlines over `RASTER_MAX_*`) |
 | [`license`] | Font-license tracking (per-title, platform, seat-limit, 32-byte wire format) |
 | [`sdf_bridge`] (feature `sdf`) | `Stroke` / `GlyphSkeleton` → `alice_sdf::Sdf2dNode` parametric adapter (Milestone A.3、2026-08-06) |
 

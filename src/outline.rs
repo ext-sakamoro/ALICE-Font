@@ -47,7 +47,10 @@ extern crate alloc;
 use alloc::vec::Vec;
 
 mod raster;
-pub use raster::{rasterize, TILE_EM_BOTTOM, TILE_EM_LEFT, TILE_EM_RIGHT, TILE_EM_TOP};
+pub use raster::{
+    rasterize, RasterizeError, RASTER_MAX_CONTOURS, RASTER_MAX_PIECES, RASTER_MAX_POINTS,
+    TILE_EM_BOTTOM, TILE_EM_LEFT, TILE_EM_RIGHT, TILE_EM_TOP,
+};
 
 /// UBO 内 polygon point 最大数 (packed 2/vec4 = 128 vec4 slot、std140 で 2048B)。
 pub const OUTLINE_MAX_POINTS: usize = 256;
