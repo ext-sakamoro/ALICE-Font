@@ -419,6 +419,9 @@ step "ci.yml / test: Test (default features = std)"
 step "ci.yml / test: Test (full native feature set)"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"; cargo test --workspace --features "$NATIVE_FEATURES" )
 
+step "ci.yml / raster-bits: Outline raster oracles and output digest"
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"; cargo test --test outline_raster )
+
 step "ci.yml / build: Test (sdf feature = Font → alice-sdf contract oracle)"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"; cargo test --workspace --features sdf --test analytic_oracle )
 
