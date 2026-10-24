@@ -41,6 +41,17 @@ jobs:
       - name: Test (full native feature set)
         run: cargo test --workspace --features "$NATIVE_FEATURES"
 
+  raster-x86:
+    name: Outline raster bits (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+      - name: Outline raster oracles and output digest
+        run: cargo test --test outline_raster
+
   clippy:
     name: Clippy (all targets, -D warnings)
     runs-on: ubuntu-24.04-arm
