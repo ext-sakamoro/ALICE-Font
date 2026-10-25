@@ -95,6 +95,13 @@ jobs:
         run: python3 scripts/clippy_lib_gate.py
       - name: Clippy lib gate (tests)
         run: python3 scripts/test_clippy_lib_gate.py
+      # ALICE-Law G7 / G8: the public API boundary, enumerated from rustdoc JSON (the scanner sets
+      # RUSTC_BOOTSTRAP=1 on the pinned toolchain), with every item decided in scripts/api_boundary.toml
+      # (handshake = the reader checks a producer's identifier; local = no stamped Law value crosses)
+      - name: API boundary (tests)
+        run: python3 scripts/test_api_boundary.py
+      - name: API boundary (rustdoc JSON, every item decided)
+        run: python3 scripts/api_boundary.py
 
   pyo3:
     # every feature, pyo3 included, against a pinned Python (the pyo3 0.22 build script refuses a Python newer
@@ -210,12 +217,6 @@ jobs:
       # if a scenario is dropped (the fold would silently shrink)
       - name: Semantics identifier reproduces (goldens + fold) and the Law stamp round-trips
         run: scripts/run_tests.sh semantics_golden=10,font_semantics_id=8,law_stamp=8 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp
-      # ALICE-Law G7: every byte-emitting pub fn is classified (raw same-build shader, or stamped);
-      # a new unlisted emitter, or a scan that matched nothing, fails
-      - name: Boundary scan (every byte emitter is classified)
-        run: |
-          python3 scripts/test_api_boundary.py
-          python3 scripts/api_boundary.py
       - name: Effective rustc flags (default, full native feature set, no default features)
         if: runner.os != 'Windows'
         run: |
