@@ -451,9 +451,16 @@ step "ci.yml / float-environment: Float environment (debug and release)"
   scripts/run_tests.sh float_environment=2 -- cargo test --test float_environment
   scripts/run_tests.sh float_environment=2 -- cargo test --release --test float_environment )
 
-step "ci.yml / float-environment: Semantics identifier reproduces (goldens + fold)"
+step "ci.yml / float-environment: Semantics identifier reproduces (goldens + fold) and the Law stamp round-trips"
 ( export CARGO_TERM_COLOR="always"
-  scripts/run_tests.sh semantics_golden=10,font_semantics_id=8 -- cargo test --test semantics_golden --test font_semantics_id )
+  scripts/run_tests.sh semantics_golden=10,font_semantics_id=8,law_stamp=8 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp )
+
+step "ci.yml / float-environment: Boundary scan (every byte emitter is classified, G7)"
+python3 scripts/test_api_boundary.py
+python3 scripts/api_boundary.py
+
+# ci.yml / msrv (root crate on Rust 1.87) is runner-only: it needs the pinned toolchain, which the
+# local preflight does not switch to (same as the pyo3 job's Python pin).
 
 step "ci.yml / float-environment: run_tests.sh and build configuration guard (tests, then check)"
 python3 scripts/test_run_tests.py

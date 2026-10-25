@@ -82,7 +82,7 @@ pub const OUTLINE_CONTOURS_AREA_SIZE: usize = OUTLINE_MAX_CONTOURS * 16;
 /// に接続される (winding number 計算時に close edge を追加)。
 /// `contours[i]` が外形、以降は holes (e.g. `田` = 外 + 4 内)。
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct OutlineGlyph {
     /// Unicode codepoint。
     pub codepoint: char,
@@ -141,7 +141,7 @@ impl OutlineGlyph {
 ///
 /// `pack_outline_for_shader` が生成、`to_std140_bytes` で UBO 用 byte 列に変換。
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct OutlineGlyphPayload {
     /// 元 OutlineGlyph の参照 (clone、to_std140_bytes で消費)。
     pub glyph: OutlineGlyph,
@@ -319,7 +319,7 @@ pub const MULTI_OUTLINE_UBO_SIZE: usize = MULTI_OUTLINE_POINTS_AREA_SIZE
 
 /// 単一 glyph の text layout 内配置情報 (em 座標)。
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(C)]
 pub struct OutlineGlyphLayout {
     /// この glyph の左端 x 座標 (em 単位、text 全体 0 起点)。
@@ -333,7 +333,7 @@ pub struct OutlineGlyphLayout {
 /// Instanced rendering + chunk 分割で任意長 text 対応。1 chunk = 最大
 /// [`MULTI_OUTLINE_MAX_GLYPHS`] (4) glyph、超過分は次 chunk へ。
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MultiOutlineGlyphPayload {
     /// 各 glyph の outline (reading order、未登録 char は skip)。
     pub glyphs: Vec<OutlineGlyph>,
