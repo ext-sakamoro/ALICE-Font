@@ -74,12 +74,14 @@ pub enum StampError {
         /// The minor version read from the header.
         minor: u16,
     },
-    /// The bytes are shorter than a header, or than the header says they should be.
+    /// The bytes are shorter than a header (the header carries no length; a short body surfaces as a
+    /// `SemanticsMismatch` instead, since the identifier is recomputed over whatever body is present).
     Truncated,
     /// The `kind` tag does not match the one the reader expected (wrong form).
     WrongKind,
     /// The stamped identifier is not the one this build computes for the body: the bytes were
-    /// produced by a build that computes different geometry. Both identifiers are named.
+    /// produced by a build that computes different geometry, or the body was altered or truncated in
+    /// transit. Both identifiers are named.
     SemanticsMismatch {
         /// The identifier the bytes carry.
         stamped: [u8; 32],

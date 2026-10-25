@@ -14,6 +14,15 @@
 //! them will move again when det-math's native clamp replaces the composition (it may round the
 //! degenerate `lo > hi` and NaN cases differently); the ALICE-Law conformance note records which.
 //!
+//! # NaN
+//!
+//! At the helper level `law_clamp(NaN, lo, hi)` returns `lo`: the det-math minimum and maximum take
+//! the number over a NaN, so `max(NaN, lo) = lo` then `min(lo, hi) = lo`. That differs from
+//! `f32::clamp`'s NaN → NaN, but no call site can feed a NaN that survives the clamp: the outline
+//! rasteriser's `segments()` drops zero-length edges (so `len2 > 0` in `dist2`), the glyph generator
+//! maps a degenerate stroke length to `inv_len2 = 0` (so the product is `0`, not `0/0`), and a NaN
+//! coordinate makes the distance NaN through the other terms regardless of the clamp.
+//!
 //! Tests keep the platform `f32::min` / `f32::max` for their independent oracles, so these helpers
 //! and the ban live on the library only.
 
@@ -63,9 +72,10 @@ mod tests {
 
     // Per site class (ALICE-Law G2): the det-math minimum / maximum fix the sign of an equal pair of
     // zeros to the order -0 < +0, which the platform f32::min / f32::max leave unspecified. These are
-    // the ties the routing exists for; the glyph geometry never feeds them a NaN or a ±0 pair (the G6
-    // goldens are unchanged by the routing), but a build that reverted to the platform functions would
-    // differ here on some target.
+    // the ties the routing exists for; a build that reverted to the platform functions would differ
+    // here on some target. The NaN cases are pinned too (the helper's behaviour, which no call site
+    // reaches with a surviving NaN -- see the module docs); the G6 goldens are unchanged by the
+    // routing because the recorded scenarios feed no ±0 pair.
 
     #[test]
     fn law_min_max_order_the_sign_of_a_zero_pair() {
@@ -99,6 +109,10 @@ mod tests {
         // a both-NaN pair is a NaN (its exact bits are det-math's contract, checked below)
         assert!(law_min_f32(f32::NAN, f32::NAN).is_nan());
         assert!(law_max_f64(f64::NAN, f64::NAN).is_nan());
+        // the helper-level clamp of a NaN returns lo (max(NaN, lo) = lo, then min(lo, hi) = lo),
+        // which differs from f32::clamp's NaN -> NaN; no call site reaches this (see the module docs)
+        assert_eq!(law_clamp_f32(f32::NAN, 0.0, 1.0), 0.0);
+        assert_eq!(law_clamp_f64(f64::NAN, 0.0, 1.0), 0.0);
     }
 
     #[test]

@@ -37,7 +37,7 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Removed
 
-- **Breaking (public API)**: shader payload 型 (`AnalyticalGlyphPayload` / `MultiGlyphPayload` / `OutlineGlyphPayload` / `MultiOutlineGlyphPayload` / `MultiSkeletonGlyphPayload`) の `Deserialize` 実装を削除 (G8: bytes から型付き payload への無検証経路を断つ、読み取りは `StampedEnvelope::open` の識別子検証経由のみ) `Serialize` は維持 本 crate を依存する repo を走査し当該型の参照は 0 件 (非破壊を確認)
+- **Breaking (public API)**: `Deserialize` 実装を削除した 9 型 — `AnalyticalGlyphPayload` / `AnalyticalStroke` / `AnalyticalPen` / `GlyphLayout` / `MultiGlyphPayload` (src/shader.rs)、`OutlineGlyph` / `OutlineGlyphPayload` / `OutlineGlyphLayout` / `MultiOutlineGlyphPayload` (src/outline.rs) これで 5 つの shader payload 型 (上記の 4 payload + `MultiSkeletonGlyphPayload`、後者は元から `Deserialize` 未実装) はいずれも `Deserialize` を持たない (G8 hard refusal: bytes から型付き payload への無検証経路を断つ、読み取りは `StampedEnvelope::open` の識別子検証経由のみ) `Serialize` は維持 (未刻印の durable form を書けるが、本 crate は刻印経由でしか読み戻さない) 本 crate を依存する repo を走査し当該型の参照は 0 件
 - `ROADMAP.md` / `CONTRIBUTING.md` / `docs/SDF_FONT_APPROACHES.md` / `docs/CJK_ROADMAP.md` / `docs/IDS_DATA_SOURCES.md`
 - README の approaches と Roadmap の節
 - `.github/dependabot.yml`
