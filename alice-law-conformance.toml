@@ -97,7 +97,7 @@ evidence = [
 ]
 mutant = "measured 2026-10-26, each reverted: removing read's identifier comparison reds the three rejection tests (shared with G7); re-adding `serde::Deserialize` to a payload derive makes no_payload_type_implements_deserialize red (the static scan finds Deserialize in a payload module)"
 since = "2026-10-26"
-note = "the crate still writes no font file of its own (crates/alice-sfnt is a reader that validates its own read-side magic); G8 here is the verifying reader for the crate's own stamped output. The only deserialization entry is the validating envelope; a bare shader payload cannot be deserialized at all, because those types do not implement Deserialize."
+note = "the crate still writes no font file of its own (crates/alice-sfnt is a reader that validates its own read-side magic); G8 here is the verifying reader for the crate's own stamped output. The only deserialization entry is the validating envelope; a bare shader payload cannot be deserialized at all, because those types do not implement Deserialize. The payloads keep Serialize (for emission), so a caller can still write an unstamped form of the geometry, but this crate reads nothing back without the stamp, so an unstamped write cannot be read in through any crate path."
 reference_repo = "ALICE-SDF"
 
 [G9]
