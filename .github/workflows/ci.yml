@@ -205,6 +205,11 @@ jobs:
           PY=$(command -v python3 || command -v python)
           "$PY" scripts/test_shared_files.py
           scripts/shared_files.sh
+      # ALICE-Law G6: FONT_SEMANTICS_ID is the fold of the recorded-bit goldens and alice-det-math's
+      # identifier; this leg proves the goldens reproduce bit for bit on every OS, and run_tests.sh fails
+      # if a scenario is dropped (the fold would silently shrink)
+      - name: Semantics identifier reproduces (goldens + fold)
+        run: scripts/run_tests.sh semantics_golden=10,font_semantics_id=8 -- cargo test --test semantics_golden --test font_semantics_id
       - name: Effective rustc flags (default, full native feature set, no default features)
         if: runner.os != 'Windows'
         run: |
