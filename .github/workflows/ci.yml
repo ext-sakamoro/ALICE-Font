@@ -208,8 +208,14 @@ jobs:
       # ALICE-Law G6: FONT_SEMANTICS_ID is the fold of the recorded-bit goldens and alice-det-math's
       # identifier; this leg proves the goldens reproduce bit for bit on every OS, and run_tests.sh fails
       # if a scenario is dropped (the fold would silently shrink)
-      - name: Semantics identifier reproduces (goldens + fold)
-        run: scripts/run_tests.sh semantics_golden=10,font_semantics_id=8 -- cargo test --test semantics_golden --test font_semantics_id
+      - name: Semantics identifier reproduces (goldens + fold) and the Law stamp round-trips
+        run: scripts/run_tests.sh semantics_golden=10,font_semantics_id=8,law_stamp=8 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp
+      # ALICE-Law G7: every byte-emitting pub fn is classified (raw same-build shader, or stamped);
+      # a new unlisted emitter, or a scan that matched nothing, fails
+      - name: Boundary scan (every byte emitter is classified)
+        run: |
+          python3 scripts/test_api_boundary.py
+          python3 scripts/api_boundary.py
       - name: Effective rustc flags (default, full native feature set, no default features)
         if: runner.os != 'Windows'
         run: |
@@ -230,6 +236,25 @@ jobs:
           # its workflow's pull_request paths, the gate job needs every job)
           python3 scripts/test_changed_paths.py
           python3 scripts/changed_paths.py sync
+
+  msrv:
+    # the root crate declares rust-version 1.87 (alice-zip's Law identifier hasher requires it);
+    # build it on exactly that toolchain so a dependency or a 2021-edition feature that needs a
+    # newer rustc cannot slip in unnoticed. crates/alice-sfnt keeps its own 1.85 floor and is not
+    # gated here (it does not depend on alice-zip).
+    name: MSRV (alice-font root, Rust 1.87)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.87.0
+      - uses: Swatinem/rust-cache@v2
+        if: runner.environment == 'github-hosted'
+      - name: Check (default features)
+        run: cargo check -p alice-font
+      - name: Check (full native feature set)
+        run: cargo check -p alice-font --features "std,ffi,serde"
+      - name: Check (no_std, no default features)
+        run: cargo check -p alice-font --no-default-features
 
   actionlint:
     name: actionlint (workflow YAML 検証)

@@ -2,6 +2,9 @@
 name = "alice-font"
 version = "0.7.6"
 edition = "2021"
+# alice-zip (the Law identifier hasher, ALICE-Law G7 / G8) sets a rust-version of 1.87;
+# the lockfile cannot resolve a dependency whose own rust-version exceeds ours.
+rust-version = "1.87"
 authors = ["Moroya Sakamoto"]
 description = "Procedural CJK font — no atlas, no TTF, no bitmap. Ships only laws (40-byte MetaFontParams + radical Bezier skeletons + IDS composition rules); the runtime evaluates strokes analytically for every pixel. Aligned with the ALICE principle 「データを送るな、法則を送れ」."
 license = "LicenseRef-Proprietary"
@@ -36,6 +39,10 @@ pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
 serde = { version = "1", optional = true, features = ["derive"] }
 alice-sdf = { version = "2", optional = true, default-features = false }
 alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "6384856c8b00f1615e1cd6b5c74d88036c1a8706", version = "0.5.2", default-features = false }
+# alice-zip's v2 Law identifier hasher (alice_zip::law_id::LawIdHasher) stamps the serialized
+# geometry with FONT_SEMANTICS_ID (ALICE-Law G7 / G8). no_std + alloc by default-features-off;
+# pins the same alice-det-math rev as above, so cargo resolves one arithmetic across the graph.
+alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", rev = "2a0aafacb9ec6693a3d2270df8c079ff01434bfb", version = "0.11.0", default-features = false }
 
 [dev-dependencies]
 serde_json = "1"

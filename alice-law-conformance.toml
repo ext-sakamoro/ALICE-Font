@@ -10,9 +10,10 @@
 # and every `pass` carries a measured mutant. The crate computes glyph geometry in floating
 # point: the signed distance field is f64 and alice_det_math::ops::sqrt64 (correctly rounded),
 # the recorded bits pinned by tests/outline_raster.rs. Several gates are fail-known this
-# commit with a located-absence note (G2 the float min/max helpers, G7 / G8 / G9 the identifier
-# on the serialized geometry, G11 the generated table); each lands in a later stack and the note
-# says where. G6 lands here: FONT_SEMANTICS_ID folds the recorded-bit scenarios and alice-det-math.
+# commit with a located-absence note (G2 the float min/max helpers, G9 the stamped envelope's
+# version history, G11 the generated table); each lands in a later stack and the note says where.
+# G6 / G7 / G8 land here: FONT_SEMANTICS_ID (the fold) and law_stamp (the stamp and the verifying
+# reader) over the serialized geometry.
 
 [G1]
 status = "pass"
@@ -67,21 +68,35 @@ note = "the aarch64 leg is macOS (Apple Silicon); the digest is the same on x86_
 reference_repo = "ALICE-DB"
 
 [G7]
-status = "fail-known"
-since = ""
-note = "the library serializes Law-bearing glyph geometry across a byte boundary WITHOUT an identifier header: the std140 GPU writers (`src/shader.rs#AnalyticalGlyphPayload::to_std140_bytes`, MultiGlyphPayload::to_std140_ubo_chunks, `src/outline.rs#OutlineGlyphPayload::to_std140_bytes` and the multi-glyph chunking, `src/skeleton_shader.rs#MultiSkeletonGlyphPayload::to_std140_ubo_chunks`) emit raw little-endian f32 bezier control points, pen parameters and advances with no magic / version / identifier, and the serde Serialize derives on the same payload types (feature `serde`) write the geometry as JSON with no envelope. The inbound sfnt / OTF reader (crates/alice-sfnt) validates a read-side version magic (0x00010000 / 'true' / 'OTTO') and emits no bytes. Located absence: FONT_SEMANTICS_ID now exists (G6) but no magic+version+identifier is stamped on any output form, so these boundaries carry no Law identifier to check. The next stack stamps the std140 and serde payloads with a magic+version+identifier header built on FONT_SEMANTICS_ID plus a boundary scan (ALICE-SDF's api_boundary.py style) and verifying readers, and flips G7 to pass."
+status = "pass"
+evidence = [
+    "src/law_stamp.rs stamps the serialized geometry with the Law identifier: StampedForm::stamped prepends a fixed header (STAMP_MAGIC 89 'A' 'L' 'F' 0D 0A 1A 0A, a major and minor version, and the v2 Law identifier) to a form's canonical body, where the identifier is alice_zip::law_id::LawIdHasher of the form's KIND tag and FONT_SEMANTICS_ID over the body. The five forms (AnalyticalGlyphPayload / MultiGlyphPayload / OutlineGlyphPayload / MultiOutlineGlyphPayload / MultiSkeletonGlyphPayload) implement it (single buffer = the raw std140 bytes, multi = frame_chunks of the UBO chunks); the serde form is StampedEnvelope (feature serde), the same header and identifier as a JSON object",
+    "the raw to_std140* bytes are left byte-identical: their only consumer is this crate's own shader of the same build, which reads them at the documented layout with no header. scripts/api_boundary.py enumerates every byte-emitting pub fn under src/ and classifies each in scripts/api_boundary_allowlist.toml (the two to_std140* writers are raw-same-build, with the reason); a new byte emitter that is not listed fails, and a scan that matched nothing fails (scripts/test_api_boundary.py covers both)",
+    "a compile-time guard (src/law_stamp.rs const block) fails the build unless the resolved alice_det_math::SEMANTICS_ID is DET_MATH_GENERATION (the generation FONT_SEMANTICS_ID was folded against); alice-zip pins the same alice-det-math revision, so cargo resolves one arithmetic across the graph",
+    "tests/law_stamp.rs round-trips each of the five forms through stamped()/read() and through the serde envelope, and scripts/api_boundary.py + test_api_boundary.py run in .github/workflows/ci.yml and scripts/preflight.sh",
+]
+mutant = "measured 2026-10-26, each reverted: removing read's identifier comparison (`if recomputed != stamped` -> `if false`) reds a_tampered_identifier_is_rejected, the_wrong_form_is_rejected and an_identifier_from_another_semantics_is_rejected; flipping one byte of DET_MATH_GENERATION fails the compile at the const guard (error[E0080], 'alice-det-math generation changed'); adding an unlisted byte-emitting pub fn makes scripts/api_boundary.py exit 1 (test_api_boundary.py's unlisted-emitter case)"
+since = "2026-10-26"
+note = "the raw std140 bytes carry no header on purpose: the consumer is this crate's own fragment shader of the same build, which reads the glyph data at the layout to_std140* documents; the boundary scan classifies them as raw-same-build so a new unclassified emitter cannot ship. What crosses a process or file boundary is the stamped envelope (StampedForm::stamped for bytes, StampedEnvelope for JSON), which carries FONT_SEMANTICS_ID. The envelope version is G9's subject (a later stack)."
 reference_repo = "ALICE-SDF"
 
 [G8]
-status = "fail-known"
-since = ""
-note = "no durable form of a Law-bearing value carries the identifier yet: the std140 payloads are handed to a GPU uniform buffer and the serde JSON is written by a caller, both without a header (see G7); the crate writes no font file of its own (crates/alice-sfnt is a reader). Located absence tied to G7: the identifier and the stamped stored form land with G7's stack. Becomes pass when every writer stamps the identifier and every reader checks it."
+status = "pass"
+evidence = [
+    "src/law_stamp.rs read(expected_kind, bytes) and StampedEnvelope::open(expected_kind) verify a stamped form: they check the magic, the version and the kind, recompute the identifier with alice_zip::law_id::LawIdHasher over the body under FONT_SEMANTICS_ID, and reject a difference with StampError::SemanticsMismatch, which names both the stamped identifier and the one this build computes",
+    "no silent path from bytes to a typed payload: the five shader payload types no longer implement Deserialize (only Serialize, for emission), so the only thing that deserializes is StampedEnvelope, which validates before yielding the body. tests/law_stamp.rs::no_payload_type_implements_deserialize is a static scan of src/shader.rs / src/outline.rs / src/skeleton_shader.rs that fails if any of the five regains a Deserialize derive, and fails if it checks no payload type (it checks all five)",
+    "the one-arithmetic compile-time guard of G7 ties the identifier a reader recomputes to the generation it was recorded under",
+    "tests/law_stamp.rs exercises the tampered-identifier, wrong-form, bad-magic, unknown-version, truncated and foreign-semantics rejections for the byte form and the serde envelope; run through scripts/run_tests.sh in CI and preflight",
+]
+mutant = "measured 2026-10-26, each reverted: removing read's identifier comparison reds the three rejection tests (shared with G7); re-adding `serde::Deserialize` to a payload derive makes no_payload_type_implements_deserialize red (the static scan finds Deserialize in a payload module)"
+since = "2026-10-26"
+note = "the crate still writes no font file of its own (crates/alice-sfnt is a reader that validates its own read-side magic); G8 here is the verifying reader for the crate's own stamped output. The only deserialization entry is the validating envelope; a bare shader payload cannot be deserialized at all, because those types do not implement Deserialize."
 reference_repo = "ALICE-SDF"
 
 [G9]
 status = "fail-known"
 since = ""
-note = "follows G8: there is no persisted Law identifier whose history could be audited, because the identifier (G6, FONT_SEMANTICS_ID) is not yet stamped on a stored form (G7 / G8). When G7 / G8 stamp it, G9 records its history and the id_move_check (scripts/id_move_check.py, already carried) watches it."
+note = "G6 / G7 / G8 now stamp FONT_SEMANTICS_ID on the serialized geometry (law_stamp). What G9 still lacks is a recorded history: the stamped envelope's version (STAMP_MAJOR / STAMP_MINOR) is at its first value with no prior versions to carry, and FONT_SEMANTICS_ID has no PREVIOUS list across alice-det-math generations for a reader to accept an older stored form. The next stack records the envelope-version history and the previous-identifier list, which the id_move_check (scripts/id_move_check.py, already carried) then watches, and flips G9 to pass."
 reference_repo = "ALICE-Sync"
 
 [G6]

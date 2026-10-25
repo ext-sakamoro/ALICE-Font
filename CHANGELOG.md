@@ -6,6 +6,8 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Added
 
+- `FONT_SEMANTICS_ID` (`src/semantics.rs`、ALICE-Law G6): 固定入力 9 本の記録 bit (outline raster SDF / parametric glyph SDF / pen 半幅の角度掃引 / medial axis / std140 の analytical・outline・skeleton payload / styled pixels) と `alice-det-math` の識別子を畳んだ内容ハッシュ `tests/semantics_golden.rs` が各 scenario の SHA-256 を記録、`tests/font_semantics_id.rs` が畳み・1 bit 変化・cfg 非依存・版 toolchain 鮮度・det-math の実体一致を検証 全 OS leg で bit 再現
+- `law_stamp` module (ALICE-Law G7 / G8): 直列化した字形幾何に Law 識別子を刻む `StampedForm` (`law_id` / `stamped`) と `read`、serde 相互運用の `StampedEnvelope` (magic + 版 + 識別子 + body) raw std140 bytes は同一 build の shader が読むため無刻印のまま (`scripts/api_boundary.py` が分類、未分類の新規 byte 出力は fail) 依存 `alice-zip` (git rev、`LawIdHasher` v2) を追加、`alice-det-math` 世代の compile 時整合 guard (別世代で compile fail)
 - workspace の crate `crates/alice-sfnt` (0.1.0、`no_std` + `alloc`、依存なし): TrueType / OpenType の file を読む `Font::parse(data, index)` (`ttcf` の collection、`fonts_in`)、`glyph_index` (cmap format 0 / 4 / 6 / 10 / 12 / 13)、`glyph_variation` (format 14)、`outline(gid, &mut dyn OutlineSink)` (`glyf` / `loca` の二次曲線と composite、`CFF` / `CFF2` の Type 2 charstring、CFF2 は既定の instance)、`advance` (`hmtx`)、`Contours` (輪郭を集める sink) すべての count と offset を読む前に残りの byte で確かめ (u64 で計算)、composite の深さ 32、1 輪郭の部品の訪問と点の数 2^20 (`MAX_GLYF_WORK`、同じ glyph を何度も使う composite の指数的な展開を止める)、subroutine の深さ 10、operand stack (CFF 48 / CFF2 513)、1 glyph の命令数 2^20、Unicode の cmap subtable 16 個 (`MAX_CMAP_SUBTABLES`、同じ offset の record は 1 つに数える) を上限にし、cmap の format 4 / 12 / 13 / 14 は二分探索で引き、失敗は `Error { kind, context }` 試験: 自作の font (`tests/fonts/make_test_fonts.py` が fontTools で描く) の輪郭・cmap・advance を描いた図形と照合 (`tests/oracle.rs`)、ttf-parser 0.25 との差分 (`tests/differential.rs`、`ALICE_SFNT_SYSTEM_FONTS=1` で system の font も)、全ての切り詰めで panic しない、`tests/limits.rs` (1 KB 未満で 2^24 の部品を要求する composite、record 65 535 個が 1 つの subtable を指す cmap、subtable の上限、時間の上限つき)
 - fuzz target `fuzz_sfnt_font` (`alice_sfnt::Font` の全 API、seed は `fuzz/seeds/fuzz_sfnt_font/`)、Fuzz workflow は `seeds/<target>/` を corpus に足し、`fuzz_sfnt_font` は crash で失敗する
 - `outline::rasterize(&OutlineGlyph) -> Result<GlyphSdf, RasterizeError>`: contour から `GLYPH_SDF_SIZE`² の符号付き距離 (em) を作る 塗りは non-zero winding、距離は塗った領域の境界まで (重なった contour の内側の辺は使わない)、`f64` と `alice_det_math::ops::sqrt64` で計算
@@ -16,6 +18,7 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Changed
 
+- MSRV: root crate の `rust-version` を 1.87 に (`alice-zip` の要求) `crates/alice-sfnt` は 1.85 のまま 新規に root の MSRV CI job を追加
 - `Cargo.toml` に `[workspace]` (members `.` と `crates/alice-sfnt`、`fuzz` と `tools/render-ref` は除外)
 - `.github/paths/fuzz.txt` に `crates/alice-sfnt/**`、`.github/paths/security-audit.txt` に `crates/*/Cargo.toml` と `crates/*/src/**`
 - Licence: `AGPL-3.0-only OR LicenseRef-Commercial` → `LicenseRef-Proprietary`
@@ -33,6 +36,7 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Removed
 
+- **Breaking (public API)**: shader payload 型 (`AnalyticalGlyphPayload` / `MultiGlyphPayload` / `OutlineGlyphPayload` / `MultiOutlineGlyphPayload` / `MultiSkeletonGlyphPayload`) の `Deserialize` 実装を削除 (G8: bytes から型付き payload への無検証経路を断つ、読み取りは `StampedEnvelope::open` の識別子検証経由のみ) `Serialize` は維持 本 crate を依存する repo を走査し当該型の参照は 0 件 (非破壊を確認)
 - `ROADMAP.md` / `CONTRIBUTING.md` / `docs/SDF_FONT_APPROACHES.md` / `docs/CJK_ROADMAP.md` / `docs/IDS_DATA_SOURCES.md`
 - README の approaches と Roadmap の節
 - `.github/dependabot.yml`
