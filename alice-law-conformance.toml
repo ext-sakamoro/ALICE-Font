@@ -1,0 +1,144 @@
+# ALICE-Law conformance manifest for this crate (alice-font + alice-sfnt). One entry per
+# gate defined in ALICE-Law's conformance/gates.toml; the schema (status / evidence /
+# since / note / reference_repo) is the "Manifest" section of docs/CONFORMANCE.md in that
+# repository.
+#
+# Every entry was written from a measurement on this repository at the commit this file is
+# added on: the library and test suites were run (debug and release, the default, std / ffi /
+# serde and sdf feature sets), clippy was run with the crate's own root configuration (all
+# targets) and with the library configuration (.github/clippy-lib, library only, per feature),
+# and every `pass` carries a measured mutant. The crate computes glyph geometry in floating
+# point: the signed distance field is f64 and alice_det_math::ops::sqrt64 (correctly rounded),
+# the recorded bits pinned by tests/outline_raster.rs. Several gates are fail-known this
+# commit with a located-absence note (G2 the float min/max helpers, G6 the identifier, G7 / G8
+# / G9 the identifier on the serialized geometry, G11 the generated table); each lands in a
+# later stack and the note says where.
+
+[G1]
+status = "pass"
+evidence = [
+    "the library's float transcendentals are banned: scripts/clippy_lib_gate.toml lists every f32 / f64 transcendental (sin, cos, sin_cos, tan, asin, acos, atan, atan2, sinh, cosh, tanh, asinh, acosh, atanh, exp, exp2, exp_m1, ln, ln_1p, log, log2, log10, powf, powi, cbrt, hypot) as a library-only entry; scripts/clippy_lib_gate.py --write composes them with the root clippy.toml into .github/clippy-lib/clippy.toml (byte-compared by --check), applied with CLIPPY_CONF_DIR to `cargo clippy --lib` per feature set",
+    ".github/workflows/ci.yml clippy job steps `.github/workflows/ci.yml#- name: Clippy (library code, float transcendentals forbidden; default)`, `#std,ffi,serde` and `#sdf`, each -D warnings; the pyo3 feature set on the pyo3 job `.github/workflows/ci.yml#- name: Clippy (library code, float transcendentals forbidden; all features incl. pyo3)`; scripts/preflight.sh runs the default / std,ffi,serde / sdf legs (pyo3 is runner-only: the pyo3 0.22 build refuses a Python newer than 3.13)",
+    "scripts/clippy_lib_gate.py canary: scripts/clippy-lib-canary (a standalone crate that calls every forbidden form once) must get a disallowed-method diagnostic naming each form's path (0 forms, a clean clippy exit, or a drifted generated file fail); `.github/workflows/ci.yml#- name: Clippy lib gate (regenerate check + canary)` and `#Clippy lib gate (tests)`, and scripts/preflight.sh",
+    "the library's own float arithmetic goes through alice_det_math: the SDF distance is alice_det_math::ops::sqrt64 at `src/outline/raster.rs#let d = alice_det_math::ops::sqrt64(d2)` (correctly rounded, the same bits on every target), pinned by tests/outline_raster.rs",
+]
+mutant = "measured 2026-10-26, each reverted: `fn g1_mutant_plain(x: f32) -> f32 { x.sin() }` in src/lib.rs makes `CLIPPY_CONF_DIR=.github/clippy-lib cargo clippy --lib` report f32::sin (exit 101); the same under `#[cfg(feature = \"sdf\")]` with `x.cos()` makes the sdf-feature lib leg report f64::cos; the same `(0.5f32).sin()` placed in tests/ leaves `cargo clippy --all-targets` (root configuration) at 0 disallowed methods, which is the point of the two configurations (the independent analytic oracles keep the std transcendentals)"
+since = ""
+note = "the stroke outline uses a bounded fast inverse square root (Quake / Lomont, src/stroke.rs and src/glyph/mod.rs): it is deterministic (f32::from_bits / to_bits and IEEE multiply / subtract, the same bits on every target) and calls none of the methods the G1 list names, so clippy does not flag it; its error against the exact reciprocal square root is pinned in tests/analytic_oracle.rs (the Lomont two-step bound). alice-det-math is the arithmetic for the SDF; the ban keeps a platform libm transcendental out of the library."
+reference_repo = "ALICE-SDF"
+
+[G2]
+status = "fail-known"
+since = ""
+note = "the library still computes a few float minima and maxima directly rather than through a Law min / max helper that fixes the sign of an equal pair of zeros: `src/outline/raster.rs` folds the boundary distances with f64::min and clamps to 0.0 / 1.0, `src/game.rs` and `src/glyph/mod.rs` clamp, and `src/medial_axis/chain_trace.rs` takes component-wise min / max of f32 points. Located absence: there is no f32 / f64 max / min / clamp entry in the root clippy.toml or in scripts/clippy_lib_gate.toml yet, and no tie test. The next stack routes these sites through the alice-det-math (or an ALICE-SDF-style law_min_f32 / law_max_f32) helpers, adds the max / min / clamp bans to the library configuration with a per-site-class tie test (bounds built from points; distances), and flips this to pass. The sign of an equal pair of zeros does not reach a stored value today only because nothing of the crate is stored (see G7)."
+reference_repo = "ALICE-SDF"
+
+[G3]
+status = "pass"
+evidence = [
+    "tools/no-outer-fneg-of-fma/ (syntax-tree pre-check, byte-identical to ALICE-LOL's) and scripts/fneg_fma_ir_check.py (the release LLVM IR check): a negation whose operand traces to a fma call fails at the crate's own source line; scripts/no-outer-fneg-of-fma-allowlist.toml declares expected-fma-calls 0 and expected-src-fma-calls 0 (the library has no fused multiply-add) and the [[ir]] floors 0 for x86_64-unknown-linux-gnu and aarch64-unknown-linux-gnu",
+    "f32::mul_add and f64::mul_add are banned in the root clippy.toml (disallowed-methods), enforced on all targets by the clippy job `.github/workflows/ci.yml#- name: Clippy (default features, all targets)` and `#Clippy (full native feature set, all targets)` with RUSTFLAGS=-Dwarnings, so a fused multiply-add cannot enter the library, tests, examples or benches",
+    ".github/workflows/g3-ir.yml (x86_64 and aarch64 Linux; a changes job decides the run from merge-base(origin/main) with scripts/changed_paths.py and .github/paths/g3-ir.txt, a gate job is red when the IR job should have run and did not, and weekly); scripts/test_fneg_fma_ir_check.py over the shared probes; scripts/preflight.sh runs the syntax tool and its tests",
+]
+mutant = "measured 2026-10-26, each reverted: `fn g3_mut(a: f32, b: f32, c: f32) -> f32 { -a.mul_add(b, c) }` in src/lib.rs makes `cargo clippy --lib` report f32::mul_add (the root ban, exit 101) and tools/no-outer-fneg-of-fma exit 1 (expected-fma-calls / expected-src-fma-calls 0 against 1 found, and a negated fma result at that line)"
+since = ""
+note = "no fused multiply-add call in the library sources: the syntax-tree check counts 0 fma-family calls against the declared 0, so the first new call fails on the count and a negated one fails on the form. mul_add is kept banned on every target (not only the library) because the G3 evidence rule covers tests and examples. Residual: a generic or #[inline] function inlined into another crate is in that crate's IR."
+reference_repo = "ALICE-LOL"
+
+[G4]
+status = "pass"
+evidence = [
+    "tests/outline_raster.rs `tests/outline_raster.rs#fn the_output_bits_are_the_same_on_every_platform`: the SHA-ish digest of the rasterised signed distance field of a star overlapping a box, compared to the recorded golden `tests/outline_raster.rs#const STAR_DIGEST: u64 = 0xa09e_8903_c20e_2b17`; `tests/outline_raster.rs#fn a_star_is_its_brute_force` is the independent oracle (the rasteriser against a closed-form polygon SDF), and tests/analytic_oracle.rs pins the stroke and pen closed forms within their proven bounds",
+    ".github/workflows/ci.yml test job `.github/workflows/ci.yml#- name: Test` runs cargo test --test outline_raster; scripts/preflight.sh `scripts/preflight.sh#cargo test --test outline_raster`",
+]
+mutant = "measured 2026-10-26, reverted: shifting a production sample point in src/outline/raster.rs (`(py as f64 + 0.5)` to `(py as f64 + 0.5001)`) makes the_output_bits_are_the_same_on_every_platform fail (digest 0x382d33e3f196e992, recorded 0xa09e8903c20e2b17) in debug and in release"
+since = ""
+note = "the digest is recorded from the current build; a_star_is_its_brute_force pins the rasteriser against the closed-form polygon SDF independently of the recording. The field is f64 with alice_det_math::ops::sqrt64 and stored as f32; a signed zero at a boundary is a value the digest pins (the signed-zero / NaN edge becomes its own pin when G2's helpers land)."
+reference_repo = "ALICE-DB"
+
+[G5]
+status = "pass"
+evidence = [
+    ".github/workflows/ci.yml test job runs cargo test on the release profile as well as debug (the matrix OS legs), and scripts/preflight.sh runs the test suites in its full part under the release profile; the golden the_output_bits_are_the_same_on_every_platform and the analytic oracle run on both",
+]
+mutant = "the release run executes the same test binary as the debug run under the release profile; the G4 mutant (the shifted sample point) fails the_output_bits_are_the_same_on_every_platform in release as it does in debug (measured 2026-10-26)"
+since = ""
+note = "the aarch64 leg is macOS (Apple Silicon); the digest is the same on x86_64 and aarch64, debug and release, because the arithmetic is det-math and IEEE basic operations."
+reference_repo = "ALICE-DB"
+
+[G7]
+status = "fail-known"
+since = ""
+note = "the library serializes Law-bearing glyph geometry across a byte boundary WITHOUT an identifier header: the std140 GPU writers (`src/shader.rs#AnalyticalGlyphPayload::to_std140_bytes`, MultiGlyphPayload::to_std140_ubo_chunks, `src/outline.rs#OutlineGlyphPayload::to_std140_bytes` and the multi-glyph chunking, `src/skeleton_shader.rs#MultiSkeletonGlyphPayload::to_std140_ubo_chunks`) emit raw little-endian f32 bezier control points, pen parameters and advances with no magic / version / identifier, and the serde Serialize derives on the same payload types (feature `serde`) write the geometry as JSON with no envelope. The inbound sfnt / OTF reader (crates/alice-sfnt) validates a read-side version magic (0x00010000 / 'true' / 'OTTO') and emits no bytes. Located absence: there is no FONT_SEMANTICS_ID (see G6) and no magic+version+identifier on any output form, so these boundaries carry no Law identifier to check. The next stacks add FONT_SEMANTICS_ID (G6) then stamp the std140 and serde payloads with a magic+version+identifier header plus a boundary scan (ALICE-SDF's api_boundary.py style) and verifying readers, and flip G7 to pass."
+reference_repo = "ALICE-SDF"
+
+[G8]
+status = "fail-known"
+since = ""
+note = "no durable form of a Law-bearing value carries the identifier yet: the std140 payloads are handed to a GPU uniform buffer and the serde JSON is written by a caller, both without a header (see G7); the crate writes no font file of its own (crates/alice-sfnt is a reader). Located absence tied to G7: the identifier and the stamped stored form land with G7's stack. Becomes pass when every writer stamps the identifier and every reader checks it."
+reference_repo = "ALICE-SDF"
+
+[G9]
+status = "fail-known"
+since = ""
+note = "follows G8: there is no persisted Law identifier whose history could be audited, because there is no identifier yet (G6) and no stamped stored form (G7 / G8). When G6 introduces FONT_SEMANTICS_ID and G7 / G8 stamp it, G9 records its history and the id_move_check (scripts/id_move_check.py, already carried) watches it."
+reference_repo = "ALICE-Sync"
+
+[G6]
+status = "fail-known"
+since = ""
+note = "the crate has no Law identifier: there is no FONT_SEMANTICS_ID (or similar) constant, no PREVIOUS_*_SEMANTICS_IDS list and no fold / check function anywhere in src. Located absence: the glyph geometry is pinned by the recorded-bit golden (G4 / G5) but not folded into a published identifier. The next stack adds a FONT_SEMANTICS_ID that folds the golden scenarios and alice-det-math's SEMANTICS_ID, with a fold test run through scripts/run_tests.sh on debug / release x ubuntu / macOS, and flips G6 to pass; G7 / G8 / G9 build on it."
+reference_repo = "ALICE-Channel"
+
+[G10]
+status = "pass"
+evidence = [
+    "the root clippy.toml disallowed-methods `getrandom::getrandom`, `getrandom::getrandom_uninit`, `std::time::Instant::now`, `std::time::Instant::elapsed`, `std::time::SystemTime::elapsed`, `std::time::SystemTime::now`, `std::collections::hash_map::RandomState::new` and disallowed-types `std::collections::hash_map::RandomState`, enforced on all targets with -D warnings by the clippy job steps listed under G1 / G3",
+    "src/ of both crates has no getrandom, rand, OsRng, SystemTime, Instant, UNIX_EPOCH or Uuid (a grep over production src finds none), so no Law-bearing output depends on OS entropy or the wall clock; the recorded-bit golden (G4) is produced from a fixed glyph, pinned by digest on every CI leg",
+]
+mutant = "measured 2026-10-26, reverted: `fn g10_mut() -> std::time::SystemTime { std::time::SystemTime::now() }` in src/lib.rs makes `cargo clippy --lib` report std::time::SystemTime::now (exit 101)"
+since = ""
+note = "the crate takes no key or seed and reads no clock; its output is a function of the glyph description alone, so there is no entropy or wall-clock site to label."
+reference_repo = "ALICE-DB"
+
+[G11]
+status = "fail-known"
+since = ""
+note = "(c) holds: scripts/shared_files.sh fetches ALICE-Law's table and checker at .github/shared-files-pin (both SHA-256 pinned) and compares every shared copy of the committed tree (CI float-environment job step `.github/workflows/ci.yml#- name: Shared files equal ALICE-Law's table` and scripts/preflight.sh); every copy this crate carries has its row's bytes (the clippy-lib set scripts/clippy_lib_gate.py + test, not the root-canary set). Located absence for (a) and (b): there is no conformance/g11.toml and no CI step that checks one. ALICE-Law's generator takes the rows of shared checkers only for the repositories its shared-files table lists as carriers, and the table lists this crate from its main once Stack 1 lands; the table, scripts/g11_table.sh, the .github/g11-table-pin and the g11 CI step come with that listing (a follow-up), and G11 flips to pass then."
+reference_repo = "ALICE-Sync"
+
+[G12]
+status = "pass"
+evidence = [
+    ".github/workflows/public-text.yml (pushes to main and ci/**, pull requests to main) and scripts/public_text.sh (fetches ALICE-Law's scripts/public_text_check.py at .github/public-text-pin, refuses it unless the SHA-256 matches, exits 2 when it compared nothing)",
+    ".github/public-text-pin and scripts/test_public_text.py",
+    "scripts/preflight.sh (`scripts/preflight.sh#eol.yml / public-text.yml: Line endings and public text`)",
+]
+mutant = "scripts/test_public_text.py (13 tests, measured 2026-10-26, exit 0) is the checker's canary: a planted line matching one of the checker's forbidden classes is reported as a finding, and a scan that compared nothing exits 2; the crate's own tree is 0 findings in 238 files at HEAD and in the 3 commits of this stack"
+since = ""
+reference_repo = "ALICE-DB"
+
+[G13]
+status = "pass"
+evidence = [
+    "the root clippy.toml disallowed-types `std::collections::HashMap` and `std::collections::HashSet` (with RandomState banned for G10), so no hash iteration order can reach an output, enforced on all targets with -D warnings by the clippy steps listed under G1 / G3",
+    "src/ of both crates has no HashMap, HashSet, rayon, par_iter, std::thread::spawn or thread::scope (a grep over production src finds none); the outputs are produced by one caller-driven pass with no hash container and no thread",
+]
+mutant = "measured 2026-10-26, reverted: `fn g13_mut() -> usize { std::collections::HashMap::<u8, u8>::new().len() }` in src/lib.rs makes `cargo clippy --lib` report the disallowed type std::collections::HashMap (exit 101)"
+since = ""
+note = "the order-independence the gate names has nothing to vary here: the crate has no hash container and no thread of its own; the ban keeps it so (a BTreeMap / BTreeSet is the allowed form)."
+reference_repo = "ALICE-DB"
+
+[G14]
+status = "pass"
+evidence = [
+    "scripts/build_config_guard.py (static half, byte-identical to ALICE-DB's): every .cargo/config*, *.toml, build.rs, *.rs, *.yml / *.yaml, *.json and script outside target/, for target-cpu=native, non-literal target flags, RUSTFLAGS from a command or file, fast-math-style flags and the fast float intrinsics; scripts/build_config_allowlist.toml excludes only the two G14 scripts and their tests, no allow entry",
+    "scripts/build_flags_check.py (dynamic half, byte-identical to ALICE-DB's): runs cargo check -v in a fresh target directory and reads every rustc command line; fails when none was seen for alice_font",
+    "scripts/test_build_config_guard.py, scripts/test_build_flags_check.py, scripts/run_tests.sh and scripts/test_run_tests.py",
+    ".github/workflows/ci.yml float-environment job (ubuntu, macOS, Windows): tests/float_environment.rs in debug and release through scripts/run_tests.sh float_environment=2, the static guard, and on ubuntu / macOS the dynamic check; scripts/preflight.sh mirrors it",
+    "tests/float_environment.rs round_to_nearest_even and subnormals_are_not_flushed (byte-identical to ALICE-DB's)",
+]
+mutant = "measured 2026-10-26, reverted: adding `RUSTFLAGS_MUT: \"-C target-cpu=native\"` to ci.yml's env makes scripts/build_config_guard.py exit 1 (target-cpu=native in a scanned file)"
+since = ""
+note = "the static scan covers the files of this repository and the dynamic check covers the builds CI runs on ubuntu and macOS; a flag passed by a build outside this repository is outside both. The float-environment test pins the platform the dependencies run on."
+reference_repo = "ALICE-DB"
