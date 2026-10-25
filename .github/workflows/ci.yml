@@ -70,6 +70,19 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Clippy (full native feature set, all targets)
         run: cargo clippy --workspace --features "$NATIVE_FEATURES" --all-targets -- -D warnings
+      # the list in clippy.toml (ALICE-Law G1 / G10 / G13) only gates anything if clippy
+      # flags a call to it: a throwaway crate with the same clippy.toml plants one banned
+      # call per row of scripts/clippy_canary_calls.tsv (0 rows fail). The rows are generated
+      # from clippy.toml, one per disallowed-methods / disallowed-types entry; --check fails
+      # when the file has drifted from clippy.toml
+      - name: Clippy canary data (generator tests)
+        run: python3 scripts/test_gen_clippy_canary_calls.py
+      - name: Clippy canary data (generated from clippy.toml, no drift)
+        run: python3 scripts/gen_clippy_canary_calls.py --check
+      - name: Clippy canary (tests)
+        run: python3 scripts/test_clippy_canary.py
+      - name: Clippy canary (every planted banned call is flagged)
+        run: python3 scripts/clippy_canary.py
 
   pyo3:
     # every feature, pyo3 included, against a pinned Python (the pyo3 0.22 build script refuses a Python newer
@@ -137,6 +150,64 @@ jobs:
         run: cargo doc --no-deps --features "$NATIVE_FEATURES"
         env:
           RUSTDOCFLAGS: "-Dwarnings"
+
+  float-environment:
+    # ALICE-Law G14 on each OS: round-to-nearest-even and no flush-to-zero at run time
+    # in both profiles (scripts/run_tests.sh float_environment=2 fails unless both tests
+    # passed), the static build configuration guard, and on ubuntu / macOS the flags cargo
+    # really passes to rustc (scripts/build_flags_check.py). Also G11 (c) shared files, and
+    # G3 (the syntax-tree half of the negated-fma check; the IR half is g3-ir.yml).
+    name: Float environment (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Float environment (debug and release)
+        run: |
+          scripts/run_tests.sh float_environment=2 -- cargo test --test float_environment
+          scripts/run_tests.sh float_environment=2 -- cargo test --release --test float_environment
+      - name: run_tests.sh and build configuration guard (tests, then check)
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/test_run_tests.py
+          "$PY" scripts/test_build_config_guard.py
+          "$PY" scripts/build_config_guard.py
+          "$PY" scripts/test_build_flags_check.py
+      # ALICE-Law G11 (c): the files shared with the other crates are the bytes ALICE-Law's
+      # table records (table and checker fetched at .github/shared-files-pin, both SHA-256
+      # pinned); a difference, an unlisted shared path or nothing compared fails
+      - name: Shared files equal ALICE-Law's table
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" scripts/test_shared_files.py
+          scripts/shared_files.sh
+      - name: Effective rustc flags (default, full native feature set, no default features)
+        if: runner.os != 'Windows'
+        run: |
+          python3 scripts/build_flags_check.py -- cargo check --release --lib
+          python3 scripts/build_flags_check.py -- cargo check --release --lib --features "$NATIVE_FEATURES"
+          python3 scripts/build_flags_check.py -- cargo check --release --lib --no-default-features
+      # ALICE-Law G3, syntax-tree pre-check (tools/no-outer-fneg-of-fma, byte-identical to
+      # ALICE-LOL's): its own tests, then the check over src/ tests/ examples/ benches/ with
+      # the exact fma-call counts of scripts/no-outer-fneg-of-fma-allowlist.toml (0 here);
+      # the IR half is .github/workflows/g3-ir.yml
+      - name: No negated fma result (syntax tree, tests then check)
+        run: |
+          cargo fmt --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml -- --check
+          cargo test --quiet --locked --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml
+          cargo run --quiet --locked --release --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml -- --root .
+          # scripts/changed_paths.py decides whether the path-filtered workflows run; its own
+          # tests, then the trigger lint (no on.push paths off main, each pattern file equals
+          # its workflow's pull_request paths, the gate job needs every job)
+          python3 scripts/test_changed_paths.py
+          python3 scripts/changed_paths.py sync
 
   actionlint:
     name: actionlint (workflow YAML 検証)
