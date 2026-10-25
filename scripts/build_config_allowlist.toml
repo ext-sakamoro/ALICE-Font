@@ -2,9 +2,6 @@
 # Each entry needs a reason; an allow covers exactly the lines it names (count),
 # an exclude names a file the guard would otherwise read.
 #
-# alice-font has no alice-law-conformance.toml yet (a fresh roster joiner: the
-# G11 table and its manifest come in a later stack), so no manifest exclude is
-# listed here.
 
 [[exclude]]
 path = "scripts/build_config_guard.py"
@@ -21,3 +18,7 @@ reason = "the dynamic G14 check: its rules and documentation spell out the flags
 [[exclude]]
 path = "scripts/test_build_flags_check.py"
 reason = "the dynamic check's tests: the flags appear in sample rustc command lines"
+
+[[exclude]]
+path = "alice-law-conformance.toml"
+reason = "the conformance manifest documents, in its G14 entry, the target-cpu native flag the gate forbids and the mutant that proves it; no build reads it"

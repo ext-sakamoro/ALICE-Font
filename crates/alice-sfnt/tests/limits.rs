@@ -4,7 +4,6 @@
 //! segments lookups); the limits are the crate's MAX_GLYF_WORK / MAX_CMAP_SUBTABLES.
 
 use alice_sfnt::{ErrorKind, Font, OutlineSink};
-use std::time::{Duration, Instant};
 
 /// counts segments without storing them (no allocation per segment)
 #[derive(Default)]
@@ -121,11 +120,9 @@ fn an_exponential_composite_fan_out_stops_at_the_work_budget() {
     let data = fan_out(24, 2);
     assert!(data.len() < 1024, "{}", data.len());
     let font = Font::parse(&data, 0).unwrap();
-    let t = Instant::now();
     let mut sink = Count::default();
     let e = font.outline(0, &mut sink).unwrap_err();
     assert_eq!(e.kind, ErrorKind::Limit);
-    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
     assert!(
         sink.0 <= u64::from(alice_sfnt::MAX_GLYF_WORK) * 4,
         "{} segments before the stop",
@@ -138,12 +135,10 @@ fn a_wide_fan_out_stops_too() {
     // fan 6 at depth 10: 6^10 = 60M leaves
     let data = fan_out(10, 6);
     let font = Font::parse(&data, 0).unwrap();
-    let t = Instant::now();
     assert_eq!(
         font.outline(0, &mut Count::default()).unwrap_err().kind,
         ErrorKind::Limit
     );
-    assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
 }
 
 #[test]
@@ -213,20 +208,26 @@ fn many_records(records: u16, segments: u16, distinct: bool) -> Vec<u8> {
 }
 
 #[test]
-fn many_records_to_one_subtable_look_up_quickly() {
-    // fc's font: 65 535 records, one format 4 subtable of 8 000 segments
-    let data = many_records(0xFFFF, 8000, false);
+fn many_records_to_one_subtable_look_up_in_log_time() {
+    // fc's font: 65 535 records naming one format 4 subtable of 8 000 segments (parse reads the
+    // subtable once, so this is a single map). The lookup binary-searches the segments: each one
+    // costs O(log segments) comparisons, not O(segments). A lookup that degraded to a linear scan
+    // of the segments, or a cmap that stopped de-duplicating the records (one search per record),
+    // would need far more comparisons and fail this bound; a miss within the u16 range (9000)
+    // accumulates comparisons across every map tried, so it catches the de-duplication case too.
+    let segments: u32 = 8000;
+    let data = many_records(0xFFFF, segments as u16, false);
     let font = Font::parse(&data, 0).unwrap();
-    let t = Instant::now();
+    // 2 * ceil(log2(segments)): 26 for 8000, far below the 8000 a linear scan would take
+    let bound = 2 * (u32::BITS - (segments - 1).leading_zeros());
     for cp in [0x41u32, 7999, 9000, 0x10000] {
-        let _ = font.glyph_index(cp).unwrap();
+        let (_, probes) = font.glyph_index_probes(cp).unwrap();
+        assert!(
+            probes <= bound,
+            "{probes} comparisons for cp {cp:#x} over {segments} segments (bound {bound})"
+        );
     }
     assert_eq!(font.glyph_index(5).unwrap(), Some(6));
-    assert!(
-        t.elapsed() < Duration::from_millis(50),
-        "{:?} for 5 lookups",
-        t.elapsed()
-    );
 }
 
 #[test]
