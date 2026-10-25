@@ -24,7 +24,7 @@ All notable changes to ALICE-Font will be documented in this file.
 - `.github/paths/fuzz.txt` に `crates/alice-sfnt/**`、`.github/paths/security-audit.txt` に `crates/*/Cargo.toml` と `crates/*/src/**`
 - Licence: `AGPL-3.0-only OR LicenseRef-Commercial` → `LicenseRef-Proprietary`
 - `publish = false`、authors からアドレスを削除
-- `LICENSE-AGPL` / `LICENSE-COMMERCIAL.md` / `LICENSE-MIT-HISTORICAL` / `LICENSES/BIZUDPGothic-OFL.txt` を削除し `LICENSE-Proprietary` を追加、`TRADEMARK_NOTICE` を変更
+- 以前の licence の条文と `LICENSES/BIZUDPGothic-OFL.txt` を削除し `LICENSE-Proprietary` を追加、`TRADEMARK_NOTICE` を変更
 - CI: package integrity と cargo-semver-checks の job を `security-audit.yml` から dispatch 専用の `package-integrity.yml` に移動
 - CI: 全 feature (pyo3 を含む) の clippy を Python 3.12 に固定した job で実行
 - CI: ci.yml の ALICE-SDF の checkout を削除し、checkout を repository の root に置く
