@@ -431,5 +431,54 @@ path = "f64::hypot"
 text = "d.powi(2)"
 path = "f64::powi"
 
+# ALICE-Law G2: the library routes float min / max / clamp through alice-det-math
+[[method]]
+path = "f32::max"
+reason = "the sign of an equal pair of zeros is unspecified for the platform min / max and differs between targets; use crate::law_float::law_min_f32 / law_max_f32 / law_clamp_f32 (and the _f64 forms), which go through alice-det-math (ALICE-Law G2)"
+
+[[method]]
+path = "f32::min"
+reason = "the sign of an equal pair of zeros is unspecified for the platform min / max and differs between targets; use crate::law_float::law_min_f32 / law_max_f32 / law_clamp_f32 (and the _f64 forms), which go through alice-det-math (ALICE-Law G2)"
+
+[[method]]
+path = "f32::clamp"
+reason = "the sign of an equal pair of zeros is unspecified for the platform min / max and differs between targets; use crate::law_float::law_min_f32 / law_max_f32 / law_clamp_f32 (and the _f64 forms), which go through alice-det-math (ALICE-Law G2)"
+
+[[method]]
+path = "f64::max"
+reason = "the sign of an equal pair of zeros is unspecified for the platform min / max and differs between targets; use crate::law_float::law_min_f32 / law_max_f32 / law_clamp_f32 (and the _f64 forms), which go through alice-det-math (ALICE-Law G2)"
+
+[[method]]
+path = "f64::min"
+reason = "the sign of an equal pair of zeros is unspecified for the platform min / max and differs between targets; use crate::law_float::law_min_f32 / law_max_f32 / law_clamp_f32 (and the _f64 forms), which go through alice-det-math (ALICE-Law G2)"
+
+[[method]]
+path = "f64::clamp"
+reason = "the sign of an equal pair of zeros is unspecified for the platform min / max and differs between targets; use crate::law_float::law_min_f32 / law_max_f32 / law_clamp_f32 (and the _f64 forms), which go through alice-det-math (ALICE-Law G2)"
+
+[[form]]
+text = "g2a.max(g2b)"
+path = "f32::max"
+
+[[form]]
+text = "g2a.min(g2b)"
+path = "f32::min"
+
+[[form]]
+text = "g2a.clamp(g2b, g2c)"
+path = "f32::clamp"
+
+[[form]]
+text = "g2d.max(g2e)"
+path = "f64::max"
+
+[[form]]
+text = "g2d.min(g2e)"
+path = "f64::min"
+
+[[form]]
+text = "g2d.clamp(g2e, g2f)"
+path = "f64::clamp"
+
 [[clean]]
 text = "a * b"

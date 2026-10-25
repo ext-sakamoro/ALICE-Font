@@ -94,10 +94,10 @@ fn sort_chain_points(chain: &mut MedialChain) {
     // Compute bounding box
     let (mut min_x, mut max_x, mut min_y, mut max_y) = (f32::MAX, f32::MIN, f32::MAX, f32::MIN);
     for p in &chain.points {
-        min_x = min_x.min(p[0]);
-        max_x = max_x.max(p[0]);
-        min_y = min_y.min(p[1]);
-        max_y = max_y.max(p[1]);
+        min_x = crate::law_float::law_min_f32(min_x, p[0]);
+        max_x = crate::law_float::law_max_f32(max_x, p[0]);
+        min_y = crate::law_float::law_min_f32(min_y, p[1]);
+        max_y = crate::law_float::law_max_f32(max_y, p[1]);
     }
     let is_horizontal = (max_x - min_x) >= (max_y - min_y);
 

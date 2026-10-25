@@ -627,7 +627,11 @@ impl GlyphGenerator {
                         let dx = dx_seg[sbase + i];
                         let dy = dy_seg[sbase + i];
                         // projection parameter on the segment, clamped to [0, 1]
-                        let t = ((apx * dx + apy * dy) * inv_len2[sbase + i]).clamp(0.0, 1.0);
+                        let t = crate::law_float::law_clamp_f32(
+                            (apx * dx + apy * dy) * inv_len2[sbase + i],
+                            0.0,
+                            1.0,
+                        );
                         let cx = apx - dx * t;
                         let cy = apy - dy * t;
                         let hw = shw[base + i] + (shw[base + i + 1] - shw[base + i]) * t;
