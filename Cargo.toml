@@ -39,6 +39,9 @@ alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = 
 
 [dev-dependencies]
 serde_json = "1"
+# tests/semantics_golden.rs records the SHA-256 of what fixed scenarios compute and
+# tests/font_semantics_id.rs folds the pins (ALICE-Law G6); the hash is test-only.
+sha2 = "0.10.9"
 
 # S6.3.1 analytical shader PoC example — requires `serde` feature for
 # AnalyticalGlyphPayload serialization.

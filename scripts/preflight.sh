@@ -451,6 +451,10 @@ step "ci.yml / float-environment: Float environment (debug and release)"
   scripts/run_tests.sh float_environment=2 -- cargo test --test float_environment
   scripts/run_tests.sh float_environment=2 -- cargo test --release --test float_environment )
 
+step "ci.yml / float-environment: Semantics identifier reproduces (goldens + fold)"
+( export CARGO_TERM_COLOR="always"
+  scripts/run_tests.sh semantics_golden=10,font_semantics_id=8 -- cargo test --test semantics_golden --test font_semantics_id )
+
 step "ci.yml / float-environment: run_tests.sh and build configuration guard (tests, then check)"
 python3 scripts/test_run_tests.py
 python3 scripts/test_build_config_guard.py
