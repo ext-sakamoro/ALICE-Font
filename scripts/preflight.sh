@@ -428,17 +428,23 @@ else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_sfnt_font]: nightly / cargo-fuzz not installed' >&2
 fi
 
-step "ci.yml / clippy: Clippy canary data (generator tests)"
-python3 scripts/test_gen_clippy_canary_calls.py
+step "ci.yml / clippy: Clippy (library code, float transcendentals forbidden; default)"
+relint
+( export CARGO_TERM_COLOR="always" CLIPPY_CONF_DIR=.github/clippy-lib; cargo clippy --lib -- -D warnings )
 
-step "ci.yml / clippy: Clippy canary data (generated from clippy.toml, no drift)"
-python3 scripts/gen_clippy_canary_calls.py --check
+step "ci.yml / clippy: Clippy (library code, float transcendentals forbidden; std,ffi,serde)"
+relint
+( export CARGO_TERM_COLOR="always" CLIPPY_CONF_DIR=.github/clippy-lib; cargo clippy --lib --features "std,ffi,serde" -- -D warnings )
 
-step "ci.yml / clippy: Clippy canary (tests)"
-python3 scripts/test_clippy_canary.py
+step "ci.yml / clippy: Clippy (library code, float transcendentals forbidden; sdf)"
+relint
+( export CARGO_TERM_COLOR="always" CLIPPY_CONF_DIR=.github/clippy-lib; cargo clippy --lib --features sdf -- -D warnings )
 
-step "ci.yml / clippy: Clippy canary (every planted banned call is flagged)"
-python3 scripts/clippy_canary.py
+step "ci.yml / clippy: Clippy lib gate (regenerate check + canary)"
+python3 scripts/clippy_lib_gate.py
+
+step "ci.yml / clippy: Clippy lib gate (tests)"
+python3 scripts/test_clippy_lib_gate.py
 
 step "ci.yml / float-environment: Float environment (debug and release)"
 ( export CARGO_TERM_COLOR="always" NATIVE_FEATURES="std,ffi,serde"
