@@ -99,6 +99,7 @@ pub mod ffi;
 pub mod font_dsl;
 pub mod game;
 pub mod glyph;
+pub(crate) mod law_float;
 pub mod law_stamp;
 pub mod license;
 pub mod ligature;

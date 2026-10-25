@@ -159,7 +159,7 @@ pub fn rasterize(glyph: &OutlineGlyph) -> Result<GlyphSdf, RasterizeError> {
             let d2 = boundary
                 .iter()
                 .map(|s| dist2(s, x, y))
-                .fold(f64::INFINITY, f64::min);
+                .fold(f64::INFINITY, crate::law_float::law_min_f64);
             let d = alice_det_math::ops::sqrt64(d2);
             let signed = if winding(&segs, x, y) != 0 { -d } else { d };
             sdf.data[py * GLYPH_SDF_SIZE + px] = signed as f32;
@@ -248,7 +248,7 @@ fn dist2(s: &Seg, x: f64, y: f64) -> f64 {
     let dx = s.bx - s.ax;
     let dy = s.by - s.ay;
     let len2 = dx * dx + dy * dy;
-    let t = (((x - s.ax) * dx + (y - s.ay) * dy) / len2).clamp(0.0, 1.0);
+    let t = crate::law_float::law_clamp_f64(((x - s.ax) * dx + (y - s.ay) * dy) / len2, 0.0, 1.0);
     let ex = x - (s.ax + dx * t);
     let ey = y - (s.ay + dy * t);
     ex * ex + ey * ey
@@ -332,7 +332,7 @@ fn boundary_pieces(segs: &[Seg]) -> Result<Vec<Seg>, RasterizeError> {
             for o in segs {
                 let d2 = dist2(o, mx, my);
                 if d2 > EPS * EPS {
-                    reach = reach.min(alice_det_math::ops::sqrt64(d2));
+                    reach = crate::law_float::law_min_f64(reach, alice_det_math::ops::sqrt64(d2));
                 }
             }
             let e = reach * 0.25;

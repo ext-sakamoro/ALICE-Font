@@ -641,7 +641,7 @@ fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
         return if x >= edge1 { 1.0 } else { 0.0 };
     }
     let t = (x - edge0) / range;
-    let t = t.clamp(0.0, 1.0);
+    let t = crate::law_float::law_clamp_f32(t, 0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
 }
 
@@ -724,9 +724,9 @@ fn evaluate_effect(effect: &TextEffect, d: f32, u: f32, v: f32, sdf: &GlyphSdf, 
                 // Radial component: 0 at center, 1 at edge
                 let cu = u - 0.5;
                 let cv = v - 0.5;
-                let radial_t = (cu * cu + cv * cv).min(0.25) * 4.0;
+                let radial_t = crate::law_float::law_min_f32(cu * cu + cv * cv, 0.25) * 4.0;
                 let t = linear_t * (1.0 - radial_mix) + radial_t * radial_mix;
-                let t = t.clamp(0.0, 1.0);
+                let t = crate::law_float::law_clamp_f32(t, 0.0, 1.0);
                 color_bottom.lerp(color_top, t)
             }
         }
