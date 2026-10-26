@@ -41,7 +41,7 @@ use crate::stroke::PenModel;
 ///
 /// Bitmap や atlas は含まない。all-analytical evaluation の入力データのみ。
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct AnalyticalGlyphPayload {
     /// 全 stroke の cubic Bezier control points + per-endpoint pen 半幅。
     pub strokes: Vec<AnalyticalStroke>,
@@ -75,7 +75,7 @@ impl AnalyticalGlyphPayload {
 /// GLSL 側では 5 vec4 (`p0.xy p1.xy p2.xy p3.xy widthStart widthEnd`) と
 /// してレイアウトされる想定 (`shaders/analytical_glyph.frag.glsl` 参照)。
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(C)]
 pub struct AnalyticalStroke {
     /// Bezier 制御点 0 (始点)、em 座標系 (0..1)。
@@ -94,7 +94,7 @@ pub struct AnalyticalStroke {
 
 /// Pen モデルパラメータ (fragment shader が anti-aliasing / contrast 用に参照)。
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(C)]
 pub struct AnalyticalPen {
     /// 基準 pen 半幅 (em 単位)。
@@ -157,7 +157,7 @@ pub fn pack_glyph_for_shader(ch: char, params: &MetaFontParams) -> Option<Analyt
 
 /// 単一 glyph の text layout 内配置情報 (em 座標)。
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[repr(C)]
 pub struct GlyphLayout {
     /// この glyph の左端 x 座標 (em 単位、text 全体の 0 起点)。
@@ -175,7 +175,7 @@ pub struct GlyphLayout {
 /// 現行実装: 全 glyph が KANJI_DB 登録済 + build_skeleton 成功のみ pack、
 /// 未登録は Layout も出力しない (`total_advance` 計算対象外)。
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MultiGlyphPayload {
     /// 各 kanji の shader-ready payload (登録済のみ、reading order)。
     pub glyphs: Vec<AnalyticalGlyphPayload>,
