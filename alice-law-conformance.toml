@@ -57,7 +57,7 @@ reference_repo = "ALICE-LOL"
 status = "pass"
 evidence = [
     "tests/outline_raster.rs `tests/outline_raster.rs#fn the_output_bits_are_the_same_on_every_platform`: the SHA-ish digest of the rasterised signed distance field of a star overlapping a box, compared to the recorded golden `tests/outline_raster.rs#const STAR_DIGEST: u64 = 0xa09e_8903_c20e_2b17`; `tests/outline_raster.rs#fn a_star_is_its_brute_force` is the independent oracle (the rasteriser against a closed-form polygon SDF), and tests/analytic_oracle.rs pins the stroke and pen closed forms within their proven bounds",
-    ".github/workflows/ci.yml test job `.github/workflows/ci.yml#- name: Test` runs cargo test --test outline_raster; scripts/preflight.sh `scripts/preflight.sh#cargo test --test outline_raster`",
+    ".github/workflows/ci.yml test job `.github/workflows/ci.yml#- name: Outline raster oracles and output digest` runs cargo test --test outline_raster; scripts/preflight.sh `scripts/preflight.sh#cargo test --test outline_raster`",
 ]
 mutant = "measured 2026-10-26, reverted: shifting a production sample point in src/outline/raster.rs (`(py as f64 + 0.5)` to `(py as f64 + 0.5001)`) makes the_output_bits_are_the_same_on_every_platform fail (digest 0x382d33e3f196e992, recorded 0xa09e8903c20e2b17) in debug and in release"
 since = ""

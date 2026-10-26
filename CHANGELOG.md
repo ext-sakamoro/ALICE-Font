@@ -18,6 +18,7 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Changed
 
+- CI (ALICE-Law): `.github/shared-files-pin` を ALICE-Law 9cb423c9 に上げ、preflight に line endings と public text の step を足した (G12 の根拠が名前で指す場所)
 - ALICE-Law G2: library の float min / max / clamp を alice-det-math 経由に統一 (src/law_float.rs: law_min_f32 / law_max_f32 / law_clamp_f32 と _f64、±0 の符号を順序 -0 < +0 に固定し全 target で一致、both-NaN は canonical quiet NaN) 対象 src: game.rs (smoothstep / gradient) / outline/raster.rs (最近辺 fold・segment 投影・reach) / glyph/mod.rs (stroke 投影) / medial_axis/chain_trace.rs (bounding box) lib-clippy が f32 / f64 の min / max / clamp を禁止 (scripts/clippy_lib_gate.toml + canary) + 符号・NaN の tie test clamp は det-math の clamp 世代が未着地のため min/max 合成 (clamp 世代の着地時に再移動) G6 の 9 golden は不変なので FONT_SEMANTICS_ID は据え置き
 - MSRV: root crate の `rust-version` を 1.87 に (`alice-zip` の要求) `crates/alice-sfnt` は 1.85 のまま 新規に root の MSRV CI job を追加
 - `Cargo.toml` に `[workspace]` (members `.` と `crates/alice-sfnt`、`fuzz` と `tools/render-ref` は除外)

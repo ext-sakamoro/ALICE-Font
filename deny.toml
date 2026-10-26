@@ -84,6 +84,11 @@ allow = ["LicenseRef-Proprietary"]
 name = "alice-sfnt"
 allow = ["LicenseRef-Proprietary"]
 
+# alice-zip (taken by git at its pinned commit) is proprietary at that commit (the same rights holder)
+[[licenses.exceptions]]
+name = "alice-zip"
+allow = ["LicenseRef-Proprietary"]
+
 # ---------------------------------------------------------------------------
 # Bans (banned crate / duplicate / wildcard)
 # ---------------------------------------------------------------------------
