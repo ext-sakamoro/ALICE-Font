@@ -282,6 +282,12 @@ need cargo-deny "cargo install cargo-deny --locked"
 need cargo-hack "cargo install cargo-hack --locked"
 need cargo-machete "cargo install cargo-machete --locked"
 
+step "eol.yml / public-text.yml: Line endings and public text"
+python3 scripts/test_check_eol.py
+python3 scripts/check_eol.py
+python3 scripts/test_public_text.py
+scripts/public_text.sh
+
 step "ci.yml / fmt: Check formatting"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"; cargo fmt -- --check )
 
