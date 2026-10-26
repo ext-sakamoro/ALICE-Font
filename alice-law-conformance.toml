@@ -10,9 +10,9 @@
 # and every `pass` carries a measured mutant. The crate computes glyph geometry in floating
 # point: the signed distance field is f64 and alice_det_math::ops::sqrt64 (correctly rounded),
 # the recorded bits pinned by tests/outline_raster.rs. Several gates are fail-known this
-# commit with a located-absence note (G2 the float min/max helpers, G6 the identifier, G7 / G8
-# / G9 the identifier on the serialized geometry, G11 the generated table); each lands in a
-# later stack and the note says where.
+# commit with a located-absence note (G2 the float min/max helpers, G7 / G8 / G9 the identifier
+# on the serialized geometry, G11 the generated table); each lands in a later stack and the note
+# says where. G6 lands here: FONT_SEMANTICS_ID folds the recorded-bit scenarios and alice-det-math.
 
 [G1]
 status = "pass"
@@ -69,7 +69,7 @@ reference_repo = "ALICE-DB"
 [G7]
 status = "fail-known"
 since = ""
-note = "the library serializes Law-bearing glyph geometry across a byte boundary WITHOUT an identifier header: the std140 GPU writers (`src/shader.rs#AnalyticalGlyphPayload::to_std140_bytes`, MultiGlyphPayload::to_std140_ubo_chunks, `src/outline.rs#OutlineGlyphPayload::to_std140_bytes` and the multi-glyph chunking, `src/skeleton_shader.rs#MultiSkeletonGlyphPayload::to_std140_ubo_chunks`) emit raw little-endian f32 bezier control points, pen parameters and advances with no magic / version / identifier, and the serde Serialize derives on the same payload types (feature `serde`) write the geometry as JSON with no envelope. The inbound sfnt / OTF reader (crates/alice-sfnt) validates a read-side version magic (0x00010000 / 'true' / 'OTTO') and emits no bytes. Located absence: there is no FONT_SEMANTICS_ID (see G6) and no magic+version+identifier on any output form, so these boundaries carry no Law identifier to check. The next stacks add FONT_SEMANTICS_ID (G6) then stamp the std140 and serde payloads with a magic+version+identifier header plus a boundary scan (ALICE-SDF's api_boundary.py style) and verifying readers, and flip G7 to pass."
+note = "the library serializes Law-bearing glyph geometry across a byte boundary WITHOUT an identifier header: the std140 GPU writers (`src/shader.rs#AnalyticalGlyphPayload::to_std140_bytes`, MultiGlyphPayload::to_std140_ubo_chunks, `src/outline.rs#OutlineGlyphPayload::to_std140_bytes` and the multi-glyph chunking, `src/skeleton_shader.rs#MultiSkeletonGlyphPayload::to_std140_ubo_chunks`) emit raw little-endian f32 bezier control points, pen parameters and advances with no magic / version / identifier, and the serde Serialize derives on the same payload types (feature `serde`) write the geometry as JSON with no envelope. The inbound sfnt / OTF reader (crates/alice-sfnt) validates a read-side version magic (0x00010000 / 'true' / 'OTTO') and emits no bytes. Located absence: FONT_SEMANTICS_ID now exists (G6) but no magic+version+identifier is stamped on any output form, so these boundaries carry no Law identifier to check. The next stack stamps the std140 and serde payloads with a magic+version+identifier header built on FONT_SEMANTICS_ID plus a boundary scan (ALICE-SDF's api_boundary.py style) and verifying readers, and flips G7 to pass."
 reference_repo = "ALICE-SDF"
 
 [G8]
@@ -81,13 +81,20 @@ reference_repo = "ALICE-SDF"
 [G9]
 status = "fail-known"
 since = ""
-note = "follows G8: there is no persisted Law identifier whose history could be audited, because there is no identifier yet (G6) and no stamped stored form (G7 / G8). When G6 introduces FONT_SEMANTICS_ID and G7 / G8 stamp it, G9 records its history and the id_move_check (scripts/id_move_check.py, already carried) watches it."
+note = "follows G8: there is no persisted Law identifier whose history could be audited, because the identifier (G6, FONT_SEMANTICS_ID) is not yet stamped on a stored form (G7 / G8). When G7 / G8 stamp it, G9 records its history and the id_move_check (scripts/id_move_check.py, already carried) watches it."
 reference_repo = "ALICE-Sync"
 
 [G6]
-status = "fail-known"
-since = ""
-note = "the crate has no Law identifier: there is no FONT_SEMANTICS_ID (or similar) constant, no PREVIOUS_*_SEMANTICS_IDS list and no fold / check function anywhere in src. Located absence: the glyph geometry is pinned by the recorded-bit golden (G4 / G5) but not folded into a published identifier. The next stack adds a FONT_SEMANTICS_ID that folds the golden scenarios and alice-det-math's SEMANTICS_ID, with a fold test run through scripts/run_tests.sh on debug / release x ubuntu / macOS, and flips G6 to pass; G7 / G8 / G9 build on it."
+status = "pass"
+evidence = [
+    "src/semantics.rs publishes FONT_SEMANTICS_ID (210bcb70027cfb9415d15c7b752e2c0ee4350965ca8651285dc713af117366fd), the fold of FONT_SEMANTICS_PINS: eight recorded-bit scenario digests plus alice-det-math's SEMANTICS_ID. The fold is alice-det-math's procedure (entries sorted by name, SHA-256 over each entry's 4-byte big-endian name length, name bytes and 32 digest bytes). The table, the identifier and FONT_SEMANTICS_CHECKED_AT = (version, toolchain) are plain constants no cfg gates",
+    "tests/semantics_golden.rs records the SHA-256 of what eight fixed scenarios compute in a stable little-endian layout: the outline rasteriser's signed distance field (star over a box), the parametric glyph generator's field, the pen half-width over a sweep of stroke angles, the medial axis of the shape, the analytical / outline / skeleton shader payloads in std140 layout, and the styled raster (outline+shadow+glow+gradient) of the first field; a scenario that produces no bytes fails (nothing compared)",
+    "tests/font_semantics_id.rs reads every digest out of tests/semantics_golden.rs by scanning the source, so every golden must be a pin and only goldens are pins; it checks the identifier is the fold of the table, that flipping one bit of any of the nine entries moves the identifier, that src/semantics.rs gates nothing behind cfg, the version / toolchain staleness, and that the alice-det-math entry equals alice_det_math::SEMANTICS_ID resolved at the git revision Cargo.toml pins (a live compare, not a copy); a second test file recording a golden where the fold does not look fails",
+    "scripts/run_tests.sh runs both binaries with a minimum count so a dropped or renamed scenario fails instead of silently reducing the fold; wired in .github/workflows/ci.yml and scripts/preflight.sh",
+]
+mutant = "measured 2026-10-26, each reverted: `signed as f32` -> `(signed * 1.0001_f64) as f32` in src/outline/raster.rs reds the raster-sdf golden (and the outline-payload and styled goldens that build on the field); `1.0 - self.contrast * sin_val * sin_val` -> `* 1.001` in src/stroke.rs (the det-math-trig broad-nib model) reds the pen golden; `t * t * (3.0 - 2.0 * t)` -> `3.0 - 2.1 * t` in src/game.rs smoothstep reds the styled-glyph-pixels golden. The remaining pins are the same mechanism (a SHA-256 over the full output), and tests/font_semantics_id.rs proves each of the nine entries moves the identifier by flipping one bit"
+since = "2026-10-26"
+note = "the styled-raster pin folds game::style_glyph over the rasterised field with a fixed effect stack: the style is an input, but the mapping from field and style to pixels (the smoothstep, the vertical / radial gradient mix and the Porter-Duff compositing) is this crate's own computation, so moving it moves the pinned bits. style_glyph is not behind a cfg, so the pin runs in every test job. The float minima / maxima inside style_glyph and the rasteriser are still direct (G2); routing them through a Law min / max helper does not change this identifier because the recorded bits are whatever the current computation produces, and re-recording follows the toolchain / version staleness check."
 reference_repo = "ALICE-Channel"
 
 [G10]
@@ -132,7 +139,7 @@ reference_repo = "ALICE-DB"
 [G14]
 status = "pass"
 evidence = [
-    "scripts/build_config_guard.py (static half, byte-identical to ALICE-DB's): every .cargo/config*, *.toml, build.rs, *.rs, *.yml / *.yaml, *.json and script outside target/, for target-cpu=native, non-literal target flags, RUSTFLAGS from a command or file, fast-math-style flags and the fast float intrinsics; scripts/build_config_allowlist.toml excludes only the two G14 scripts and their tests, no allow entry",
+    "scripts/build_config_guard.py (static half, byte-identical to ALICE-DB's): every .cargo/config*, *.toml, build.rs, *.rs, *.yml / *.yaml, *.json and script outside target/, for target-cpu=native, non-literal target flags, RUSTFLAGS from a command or file, fast-math-style flags and the fast float intrinsics; scripts/build_config_allowlist.toml excludes the two G14 scripts, their tests, and this manifest (it documents, in this entry, the flags the gates forbid, and no build reads it), no allow entry",
     "scripts/build_flags_check.py (dynamic half, byte-identical to ALICE-DB's): runs cargo check -v in a fresh target directory and reads every rustc command line; fails when none was seen for alice_font",
     "scripts/test_build_config_guard.py, scripts/test_build_flags_check.py, scripts/run_tests.sh and scripts/test_run_tests.py",
     ".github/workflows/ci.yml float-environment job (ubuntu, macOS, Windows): tests/float_environment.rs in debug and release through scripts/run_tests.sh float_environment=2, the static guard, and on ubuntu / macOS the dynamic check; scripts/preflight.sh mirrors it",

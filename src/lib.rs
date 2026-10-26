@@ -107,6 +107,7 @@ pub mod param;
 pub mod prelude;
 #[cfg(feature = "pyo3")]
 pub mod python;
+pub mod semantics;
 pub mod shader;
 pub mod shaper;
 pub mod skeleton_shader;
