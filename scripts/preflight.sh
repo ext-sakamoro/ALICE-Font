@@ -455,7 +455,7 @@ step "ci.yml / float-environment: Semantics identifier reproduces (goldens + fol
 ( export CARGO_TERM_COLOR="always"
   scripts/run_tests.sh semantics_golden=10,font_semantics_id=8,law_stamp=8 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp )
 
-step "ci.yml / float-environment: Boundary scan (every byte emitter is classified, G7)"
+step "ci.yml / clippy: API boundary (rustdoc JSON, every item decided, G7 / G8)"
 python3 scripts/test_api_boundary.py
 python3 scripts/api_boundary.py
 
