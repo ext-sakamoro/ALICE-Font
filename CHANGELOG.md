@@ -18,6 +18,7 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Changed
 
+- ALICE-Law G2: library の float min / max / clamp を alice-det-math 経由に統一 (src/law_float.rs: law_min_f32 / law_max_f32 / law_clamp_f32 と _f64、±0 の符号を順序 -0 < +0 に固定し全 target で一致、both-NaN は canonical quiet NaN) 対象 src: game.rs (smoothstep / gradient) / outline/raster.rs (最近辺 fold・segment 投影・reach) / glyph/mod.rs (stroke 投影) / medial_axis/chain_trace.rs (bounding box) lib-clippy が f32 / f64 の min / max / clamp を禁止 (scripts/clippy_lib_gate.toml + canary) + 符号・NaN の tie test clamp は det-math の clamp 世代が未着地のため min/max 合成 (clamp 世代の着地時に再移動) G6 の 9 golden は不変なので FONT_SEMANTICS_ID は据え置き
 - MSRV: root crate の `rust-version` を 1.87 に (`alice-zip` の要求) `crates/alice-sfnt` は 1.85 のまま 新規に root の MSRV CI job を追加
 - `Cargo.toml` に `[workspace]` (members `.` と `crates/alice-sfnt`、`fuzz` と `tools/render-ref` は除外)
 - `.github/paths/fuzz.txt` に `crates/alice-sfnt/**`、`.github/paths/security-audit.txt` に `crates/*/Cargo.toml` と `crates/*/src/**`
@@ -36,7 +37,7 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Removed
 
-- **Breaking (public API)**: shader payload 型 (`AnalyticalGlyphPayload` / `MultiGlyphPayload` / `OutlineGlyphPayload` / `MultiOutlineGlyphPayload` / `MultiSkeletonGlyphPayload`) の `Deserialize` 実装を削除 (G8: bytes から型付き payload への無検証経路を断つ、読み取りは `StampedEnvelope::open` の識別子検証経由のみ) `Serialize` は維持 本 crate を依存する repo を走査し当該型の参照は 0 件 (非破壊を確認)
+- **Breaking (public API)**: `Deserialize` 実装を削除した 9 型 — `AnalyticalGlyphPayload` / `AnalyticalStroke` / `AnalyticalPen` / `GlyphLayout` / `MultiGlyphPayload` (src/shader.rs)、`OutlineGlyph` / `OutlineGlyphPayload` / `OutlineGlyphLayout` / `MultiOutlineGlyphPayload` (src/outline.rs) これで 5 つの shader payload 型 (上記の 4 payload + `MultiSkeletonGlyphPayload`、後者は元から `Deserialize` 未実装) はいずれも `Deserialize` を持たない (G8 hard refusal: bytes から型付き payload への無検証経路を断つ、読み取りは `StampedEnvelope::open` の識別子検証経由のみ) `Serialize` は維持 (未刻印の durable form を書けるが、本 crate は刻印経由でしか読み戻さない) 本 crate を依存する repo を走査し当該型の参照は 0 件
 - `ROADMAP.md` / `CONTRIBUTING.md` / `docs/SDF_FONT_APPROACHES.md` / `docs/CJK_ROADMAP.md` / `docs/IDS_DATA_SOURCES.md`
 - README の approaches と Roadmap の節
 - `.github/dependabot.yml`

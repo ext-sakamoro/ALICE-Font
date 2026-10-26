@@ -54,4 +54,10 @@ pub fn f64_powf(d: f64, e: f64) -> f64 { d.powf(e) }
 pub fn f64_cbrt(d: f64) -> f64 { d.cbrt() }
 pub fn f64_hypot(d: f64, e: f64) -> f64 { d.hypot(e) }
 pub fn f64_powi(d: f64) -> f64 { d.powi(2) }
+pub fn g2_max_f32(g2a: f32, g2b: f32) -> f32 { g2a.max(g2b) }
+pub fn g2_min_f32(g2a: f32, g2b: f32) -> f32 { g2a.min(g2b) }
+pub fn g2_clamp_f32(g2a: f32, g2b: f32, g2c: f32) -> f32 { g2a.clamp(g2b, g2c) }
+pub fn g2_max_f64(g2d: f64, g2e: f64) -> f64 { g2d.max(g2e) }
+pub fn g2_min_f64(g2d: f64, g2e: f64) -> f64 { g2d.min(g2e) }
+pub fn g2_clamp_f64(g2d: f64, g2e: f64, g2f: f64) -> f64 { g2d.clamp(g2e, g2f) }
 pub fn clean_product(a: f32, b: f32) -> f32 { a * b }
