@@ -255,6 +255,22 @@ impl<'a> Font<'a> {
         }
     }
 
+    /// The glyph a code point maps to, together with the number of `cmap` segment / group
+    /// comparisons the lookup made. A budget test asserts the count stays logarithmic in the
+    /// subtable size, so a lookup that degraded to a linear scan fails. Hidden: it is for the
+    /// crate's own tests, not part of the public surface.
+    #[doc(hidden)]
+    pub fn glyph_index_probes(&self, code_point: u32) -> Result<(Option<u16>, u32)> {
+        match &self.cmap {
+            Some(c) => {
+                let mut probes = 0;
+                let g = c.glyph_counted(code_point, &mut probes)?;
+                Ok((g, probes))
+            }
+            None => Ok((None, 0)),
+        }
+    }
+
     /// The result of a variation sequence (`cmap` format 14), `None` when the font does not list it.
     pub fn glyph_variation(&self, code_point: u32, selector: u32) -> Result<Option<Variation>> {
         match &self.cmap {

@@ -104,8 +104,15 @@ impl<'a> Cmap<'a> {
 
     /// The glyph for a code point: the first Unicode subtable (in record order) that maps it to a non-zero id.
     pub(crate) fn glyph(&self, cp: u32) -> Result<Option<u16>> {
+        self.glyph_counted(cp, &mut 0)
+    }
+
+    /// The glyph for a code point, adding to `probes` the number of segment / group comparisons the
+    /// lookup makes. The budget tests assert this stays logarithmic in the subtable size (a linear
+    /// scan would blow it), which is the property the binary searches here must keep.
+    pub(crate) fn glyph_counted(&self, cp: u32, probes: &mut u32) -> Result<Option<u16>> {
         for map in &self.maps {
-            if let Some(g) = lookup(map, cp)? {
+            if let Some(g) = lookup(map, cp, probes)? {
                 return Ok(Some(g));
             }
         }
@@ -206,12 +213,14 @@ fn nonzero(g: u32) -> Option<u16> {
 fn bsearch<'d>(
     records: &'d [u8],
     size: usize,
+    probes: &mut u32,
     cmp: impl Fn(&'d [u8]) -> Result<Ordering>,
 ) -> Result<Option<&'d [u8]>> {
     let (mut lo, mut hi) = (0usize, records.len() / size);
     while lo < hi {
         let mid = lo + (hi - lo) / 2;
         let rec = &records[mid * size..mid * size + size];
+        *probes += 1;
         match cmp(rec)? {
             Ordering::Equal => return Ok(Some(rec)),
             Ordering::Less => lo = mid + 1,
@@ -221,7 +230,7 @@ fn bsearch<'d>(
     Ok(None)
 }
 
-fn lookup(map: &Map<'_>, cp: u32) -> Result<Option<u16>> {
+fn lookup(map: &Map<'_>, cp: u32, probes: &mut u32) -> Result<Option<u16>> {
     match *map {
         Map::Byte(ids) => Ok(usize::try_from(cp)
             .ok()
@@ -242,6 +251,7 @@ fn lookup(map: &Map<'_>, cp: u32) -> Result<Option<u16>> {
             let (mut lo, mut hi) = (0usize, seg_count);
             let mut found = None;
             while hi > lo {
+                *probes += 1;
                 let i = lo + (hi - lo) / 2;
                 if u16_at(end, i, "cmap format 4 endCode")? >= cp {
                     let seg_start = u16_at(start, i, "cmap format 4 startCode")?;
@@ -292,7 +302,7 @@ fn lookup(map: &Map<'_>, cp: u32) -> Result<Option<u16>> {
             groups,
             many_to_one,
         } => {
-            let hit = bsearch(groups, 12, |g| {
+            let hit = bsearch(groups, 12, probes, |g| {
                 let mut r = Reader::new(g, "cmap group");
                 let (s, e) = (r.u32()?, r.u32()?);
                 Ok(if s > cp {
@@ -335,7 +345,7 @@ fn lookup_format14(sub: &[u8], cp: u32, selector: u32) -> Result<Option<Variatio
     let count = r.u32()?;
     let records = r.array(u64::from(count), 11)?;
     // records are sorted by selector, mappings and ranges by code point
-    let Some(rec) = bsearch(records, 11, |rec| {
+    let Some(rec) = bsearch(records, 11, &mut 0, |rec| {
         Ok(Reader::new(rec, "cmap format 14 record")
             .u24()?
             .cmp(&selector))
@@ -355,7 +365,7 @@ fn lookup_format14(sub: &[u8], cp: u32, selector: u32) -> Result<Option<Variatio
         )?;
         let n = t.u32()?;
         let maps = t.array(u64::from(n), 5)?;
-        if let Some(m) = bsearch(maps, 5, |m| {
+        if let Some(m) = bsearch(maps, 5, &mut 0, |m| {
             Ok(Reader::new(m, "cmap format 14 UVS mapping").u24()?.cmp(&cp))
         })? {
             let mut mr = Reader::new(m, "cmap format 14 UVS mapping");
@@ -367,7 +377,7 @@ fn lookup_format14(sub: &[u8], cp: u32, selector: u32) -> Result<Option<Variatio
         let mut t = Reader::at(sub, u64::from(default_off), "cmap format 14 default UVS")?;
         let n = t.u32()?;
         let ranges = t.array(u64::from(n), 4)?;
-        let hit = bsearch(ranges, 4, |rg| {
+        let hit = bsearch(ranges, 4, &mut 0, |rg| {
             let mut rr = Reader::new(rg, "cmap format 14 unicode range");
             let start = rr.u24()?;
             let last = start + u32::from(rr.u8()?);

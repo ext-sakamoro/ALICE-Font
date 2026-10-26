@@ -428,6 +428,55 @@ else
   echo 'PREFLIGHT-SKIP: fuzz.yml / fuzz: Build fuzz target [target=fuzz_sfnt_font]: nightly / cargo-fuzz not installed' >&2
 fi
 
+step "ci.yml / clippy: Clippy (library code, float transcendentals forbidden; default)"
+relint
+( export CARGO_TERM_COLOR="always" CLIPPY_CONF_DIR=.github/clippy-lib; cargo clippy --lib -- -D warnings )
+
+step "ci.yml / clippy: Clippy (library code, float transcendentals forbidden; std,ffi,serde)"
+relint
+( export CARGO_TERM_COLOR="always" CLIPPY_CONF_DIR=.github/clippy-lib; cargo clippy --lib --features "std,ffi,serde" -- -D warnings )
+
+step "ci.yml / clippy: Clippy (library code, float transcendentals forbidden; sdf)"
+relint
+( export CARGO_TERM_COLOR="always" CLIPPY_CONF_DIR=.github/clippy-lib; cargo clippy --lib --features sdf -- -D warnings )
+
+step "ci.yml / clippy: Clippy lib gate (regenerate check + canary)"
+python3 scripts/clippy_lib_gate.py
+
+step "ci.yml / clippy: Clippy lib gate (tests)"
+python3 scripts/test_clippy_lib_gate.py
+
+step "ci.yml / float-environment: Float environment (debug and release)"
+( export CARGO_TERM_COLOR="always" NATIVE_FEATURES="std,ffi,serde"
+  scripts/run_tests.sh float_environment=2 -- cargo test --test float_environment
+  scripts/run_tests.sh float_environment=2 -- cargo test --release --test float_environment )
+
+step "ci.yml / float-environment: run_tests.sh and build configuration guard (tests, then check)"
+python3 scripts/test_run_tests.py
+python3 scripts/test_build_config_guard.py
+python3 scripts/build_config_guard.py
+python3 scripts/test_build_flags_check.py
+
+step "ci.yml / float-environment: Shared files equal ALICE-Law's table"
+python3 scripts/test_shared_files.py
+scripts/shared_files.sh
+
+step "ci.yml / float-environment: Effective rustc flags (default, full native feature set, no default features)"
+( export CARGO_TERM_COLOR="always" NATIVE_FEATURES="std,ffi,serde"
+  python3 scripts/build_flags_check.py -- cargo check --release --lib
+  python3 scripts/build_flags_check.py -- cargo check --release --lib --features "$NATIVE_FEATURES"
+  python3 scripts/build_flags_check.py -- cargo check --release --lib --no-default-features )
+
+step "ci.yml / float-environment: No negated fma result (syntax tree, tests then check)"
+( export CARGO_TERM_COLOR="always"
+  cargo fmt --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml -- --check
+  cargo test --quiet --locked --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml
+  cargo run --quiet --locked --release --manifest-path tools/no-outer-fneg-of-fma/Cargo.toml -- --root . )
+
+step "ci.yml / float-environment: changed_paths (tests then trigger lint)"
+python3 scripts/test_changed_paths.py
+python3 scripts/changed_paths.py sync
+
 if [[ $quick -eq 1 ]]; then
   echo; echo "preflight --quick OK (test / bench suites skipped)"; exit 0
 fi

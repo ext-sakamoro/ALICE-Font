@@ -1,0 +1,55 @@
+# Determinism gates for alice-font: ALICE-Law G1 (the floating-point
+# arithmetic, first list) and G10 (OS entropy and the wall clock, further
+# down), plus G13 (hash iteration order, in disallowed-types).
+#
+# A glyph outline, a stroke skeleton and a raster digest must be reproduced
+# bit for bit on every machine (the recorded-bit goldens depend on it). IEEE
+# 754 does not require the transcendentals to be correctly rounded, so the
+# platform libm may differ between OS, CPU and compiler, and a value computed
+# with it would differ with them; the computation goes through alice_det_math
+# instead. This list keeps a call to the std method from coming in unnoticed.
+#
+# The entries are the f32 / f64 method part of the lists ALICE-DB and
+# alice-zip use. The libm free functions of alice-zip's list are not named:
+# alice-font does not depend on libm, so none can be. CI runs clippy with
+# `--all-targets ... -D warnings`, which turns `disallowed_methods` into a red
+# gate for the library, the tests, the examples and the benches alike.
+# scripts/clippy_canary.py plants one call per entry and fails unless clippy
+# flags each one.
+#
+# Deliberately absent: `sqrt`, `floor`, `round`, `trunc`, `ceil` and `mul_add`.
+# IEEE 754 specifies each of them exactly.
+#
+# Deliberately NOT yet enabled: ALICE-Law G2 (std's float max / min / clamp).
+# src/ has float min / max / clamp sites that are not yet routed through a Law
+# helper (alice-det-math's max / min / clamp); banning them now would make
+# clippy red before that routing lands. The G2 bans come in a later stack,
+# together with the routing. (ALICE-Crypto's clippy.toml carries them because
+# its src/ has none.)
+#
+# Oracles whose expected value must not come from the implementation under
+# test carry a scoped #[expect] with the reason (it fails if the banned call
+# goes away, so it cannot go stale).
+disallowed-methods = [
+    { path = "getrandom::getrandom", reason = "OS entropy makes a result vary from run to run; take a key (or seed) as an input" },
+    { path = "getrandom::getrandom_uninit", reason = "OS entropy makes a result vary from run to run; take a key (or seed) as an input" },
+    { path = "std::time::Instant::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
+    { path = "std::time::Instant::elapsed", reason = "reads the wall clock the same as Instant::now; duration_since on an already-held value is fine, this reads the clock again" },
+    { path = "std::time::SystemTime::elapsed", reason = "reads the wall clock the same as SystemTime::now; duration_since on an already-held value is fine, this reads the clock again" },
+    { path = "std::time::SystemTime::now", reason = "the wall clock makes results depend on timing; pass time in or use a step count" },
+    { path = "std::collections::hash_map::RandomState::new", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic" },
+    { path = "f32::mul_add", reason = "a fused multiply-add has one rounding; the JIT and the emitted shader / Rust source compute a*b+c with two, so the same formula gives different bits; write a*b+c or use a form both paths share" },
+    { path = "f64::mul_add", reason = "a fused multiply-add has one rounding; the JIT and the emitted shader / Rust source compute a*b+c with two, so the same formula gives different bits; write a*b+c or use a form both paths share" },
+]
+disallowed-types = [
+    # disallowed-methods cannot name RandomState::default (a trait method,
+    # not reachable via the implementing type's path alone); naming the type
+    # itself here catches ::default() too, along with any other explicit
+    # naming (a type annotation, a turbofish), without touching HashMap::new's
+    # own internal (unnamed) use of RandomState.
+    { path = "std::collections::hash_map::RandomState", reason = "seeds from OS randomness and would make HashMap iteration order non-deterministic; see disallowed-methods for RandomState::new" },
+    # ALICE-Law G13: no output of this crate may depend on hash iteration order; a new
+    # hash map or set must be a BTreeMap / BTreeSet or carry a reason at its use site.
+    { path = "std::collections::HashMap", reason = "iteration order depends on the per-instance random seed; use BTreeMap" },
+    { path = "std::collections::HashSet", reason = "iteration order depends on the per-instance random seed; use BTreeSet" },
+]

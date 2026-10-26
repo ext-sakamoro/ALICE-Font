@@ -79,6 +79,11 @@ license-files = [{ path = "LICENSE", hash = 0x001c7e6c }]
 name = "alice-font"
 allow = ["LicenseRef-Proprietary"]
 
+# alice-sfnt (workspace member, the TrueType / OpenType reader) is proprietary too
+[[licenses.exceptions]]
+name = "alice-sfnt"
+allow = ["LicenseRef-Proprietary"]
+
 # ---------------------------------------------------------------------------
 # Bans (banned crate / duplicate / wildcard)
 # ---------------------------------------------------------------------------
