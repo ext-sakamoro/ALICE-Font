@@ -62,6 +62,9 @@ allow = [
     "NCSA",
 ]
 
+[licenses.private]
+ignore = true
+
 [[licenses.clarify]]
 name = "ring"
 version = "*"
@@ -74,21 +77,9 @@ version = "*"
 expression = "ISC"
 license-files = [{ path = "LICENSE", hash = 0x001c7e6c }]
 
-# alice-font is proprietary (LicenseRef-Proprietary, publish = false)
-[[licenses.exceptions]]
-name = "alice-font"
-allow = ["LicenseRef-Proprietary"]
 
-# alice-sfnt (workspace member, the TrueType / OpenType reader) is proprietary too
-[[licenses.exceptions]]
-name = "alice-sfnt"
-allow = ["LicenseRef-Proprietary"]
 
-# alice-zip (the Law identifier hasher): the exception is the declaration of the pinned rev
-# (LicenseRef-Proprietary); it changes in the commit that moves the pin
-[[licenses.exceptions]]
-name = "alice-zip"
-allow = ["LicenseRef-Proprietary"]
+
 
 # ---------------------------------------------------------------------------
 # Bans (banned crate / duplicate / wildcard)

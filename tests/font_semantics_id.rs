@@ -347,7 +347,7 @@ fn the_identifier_is_the_fold_of_the_table() {
 fn the_identifier_is_the_recorded_value() {
     assert_eq!(
         hex(&FONT_SEMANTICS_ID),
-        "210bcb70027cfb9415d15c7b752e2c0ee4350965ca8651285dc713af117366fd"
+        "868fa23e48c10d412e112aa212a96b9e895ec450bb4d89b550335e8d8c49950a"
     );
 }
 

@@ -10,6 +10,7 @@ All notable changes to ALICE-Font will be documented in this file.
 
 - **Breaking:** 直列化した字形の payload 9 型から `Deserialize` を外した (Removed の項目) 刻印の無い bytes は読まず、`law_stamp::read` が Law 識別子を確かめてから復元する 外から payload を `serde` で読んでいた呼び出しは `law_stamp` に移す
 - `FONT_SEMANTICS_CHECKED_AT` を 0.8.0 にした (固定入力 9 本の記録 bit は 0.8.0 で取り直して同じ)
+- **Breaking:** `alice-det-math` の pin を 6384856c から 2d01c63f (det-math の `SEMANTICS_ID` は `85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315` から `a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9`)、`alice-zip` の pin を 2a0aafa から 19f6f2c1 に上げた 固定入力 9 本の記録 bit はどれも変わらない (`tests/semantics_golden.rs` は同じ値で通る) が、`FONT_SEMANTICS_ID` は det-math の識別子を畳むので `210bcb70027cfb9415d15c7b752e2c0ee4350965ca8651285dc713af117366fd` から `868fa23e48c10d412e112aa212a96b9e895ec450bb4d89b550335e8d8c49950a` に動く (`DET_MATH_GENERATION` も同じ値に) 旧い識別子で刻印した bytes は `law_stamp::read` が `SemanticsMismatch` で拒む alice-det-math は 2d01c63f で `LicenseRef-Proprietary` になった (6384856c は Apache-2.0) `deny.toml` は crate ごとの例外 (alice-font / alice-sfnt / alice-zip) をやめ、`[licenses.private] ignore = true` で publish しない ALICE の crate を検査から外す
 
 ### Added
 

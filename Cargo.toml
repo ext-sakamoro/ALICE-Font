@@ -38,11 +38,11 @@ exclude = ["fuzz", "tools/render-ref"]
 pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
 serde = { version = "1", optional = true, features = ["derive"] }
 alice-sdf = { version = "2", optional = true, default-features = false }
-alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "6384856c8b00f1615e1cd6b5c74d88036c1a8706", version = "0.5.2", default-features = false }
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "2d01c63ff0849cf0ab82eafb89f87f1b729bd2a8", version = "0.5.2", default-features = false }
 # alice-zip's v2 Law identifier hasher (alice_zip::law_id::LawIdHasher) stamps the serialized
 # geometry with FONT_SEMANTICS_ID (ALICE-Law G7 / G8). no_std + alloc by default-features-off;
 # pins the same alice-det-math rev as above, so cargo resolves one arithmetic across the graph.
-alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", rev = "2a0aafacb9ec6693a3d2270df8c079ff01434bfb", version = "0.11.0", default-features = false }
+alice-zip = { git = "https://github.com/ext-sakamoro/ALICE-Zip", rev = "19f6f2c1ff5537642cefca006e37e2f00570d6ba", version = "0.11.0", default-features = false }
 
 [dev-dependencies]
 serde_json = "1"

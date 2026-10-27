@@ -11,7 +11,7 @@
 //! # Hex form
 //!
 //! ```text
-//! 210bcb70027cfb9415d15c7b752e2c0ee4350965ca8651285dc713af117366fd
+//! 868fa23e48c10d412e112aa212a96b9e895ec450bb4d89b550335e8d8c49950a
 //! ```
 //!
 //! # Fold
@@ -88,7 +88,7 @@ pub const FONT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     ),
     (
         "alice-det-math",
-        hex32("85e0884623b154a3b2b264374907b6cbac09307ca3f9a08339e48c567d3cb315"),
+        hex32("a2a11b9b826227fa7a9ed8ab2c1ce63dbb07ad4c39aa2c46a363ddea6b47dbe9"),
     ),
 ];
 
@@ -98,4 +98,4 @@ pub const FONT_SEMANTICS_CHECKED_AT: (&str, &str) = ("0.8.0", "1.98.1");
 /// Content hash of what this crate computes for fixed inputs: the fold of [`FONT_SEMANTICS_PINS`]
 /// described in the [module documentation](self)
 pub const FONT_SEMANTICS_ID: [u8; 32] =
-    hex32("210bcb70027cfb9415d15c7b752e2c0ee4350965ca8651285dc713af117366fd");
+    hex32("868fa23e48c10d412e112aa212a96b9e895ec450bb4d89b550335e8d8c49950a");
