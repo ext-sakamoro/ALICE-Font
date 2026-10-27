@@ -7,6 +7,8 @@ Cargo.lock
 # and tools/alice-font-atlas each need their own coverage.
 **/target/
 **/Cargo.lock
+# the G3 syntax-tree tool is built with --locked: its lock is tracked (identical in every carrier)
+!/tools/no-outer-fneg-of-fma/Cargo.lock
 
 # README media capture intermediates (Playwright WEBM). Only the final
 # MP4 (docs/media/*.mp4) are committed — WEBM is the raw Playwright
