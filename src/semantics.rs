@@ -93,7 +93,7 @@ pub const FONT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 ];
 
 /// The crate version and toolchain the pins were last checked against
-pub const FONT_SEMANTICS_CHECKED_AT: (&str, &str) = ("0.7.6", "1.98.1");
+pub const FONT_SEMANTICS_CHECKED_AT: (&str, &str) = ("0.8.0", "1.98.1");
 
 /// Content hash of what this crate computes for fixed inputs: the fold of [`FONT_SEMANTICS_PINS`]
 /// described in the [module documentation](self)

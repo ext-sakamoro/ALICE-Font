@@ -4,6 +4,13 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ## [Unreleased]
 
+### 破壊的変更
+
+版: `alice-font` 0.7.6 → 0.8.0 (最後の release は 0.7.6)
+
+- **Breaking:** 直列化した字形の payload 9 型から `Deserialize` を外した (Removed の項目) 刻印の無い bytes は読まず、`law_stamp::read` が Law 識別子を確かめてから復元する 外から payload を `serde` で読んでいた呼び出しは `law_stamp` に移す
+- `FONT_SEMANTICS_CHECKED_AT` を 0.8.0 にした (固定入力 9 本の記録 bit は 0.8.0 で取り直して同じ)
+
 ### Added
 
 - `FONT_SEMANTICS_ID` (`src/semantics.rs`、ALICE-Law G6): 固定入力 9 本の記録 bit (outline raster SDF / parametric glyph SDF / pen 半幅の角度掃引 / medial axis / std140 の analytical・outline・skeleton payload / styled pixels) と `alice-det-math` の識別子を畳んだ内容ハッシュ `tests/semantics_golden.rs` が各 scenario の SHA-256 を記録、`tests/font_semantics_id.rs` が畳み・1 bit 変化・cfg 非依存・版 toolchain 鮮度・det-math の実体一致を検証 全 OS leg で bit 再現
@@ -18,6 +25,7 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Changed
 
+- Semver checks workflow は手動の実行 (`workflow_dispatch`) だけにした この crate は crates.io に出さない (`publish = false`) ので、外の利用者の検査は必須の check にしない (CHANGELOG の破壊的変更と rev pin で見る)
 - ALICE-Law G2: library の float min / max / clamp を alice-det-math 経由に統一 (src/law_float.rs: law_min_f32 / law_max_f32 / law_clamp_f32 と _f64、±0 の符号を順序 -0 < +0 に固定し全 target で一致、both-NaN は canonical quiet NaN) 対象 src: game.rs (smoothstep / gradient) / outline/raster.rs (最近辺 fold・segment 投影・reach) / glyph/mod.rs (stroke 投影) / medial_axis/chain_trace.rs (bounding box) lib-clippy が f32 / f64 の min / max / clamp を禁止 (scripts/clippy_lib_gate.toml + canary) + 符号・NaN の tie test clamp は det-math の clamp 世代が未着地のため min/max 合成 (clamp 世代の着地時に再移動) G6 の 9 golden は不変なので FONT_SEMANTICS_ID は据え置き
 - MSRV: root crate の `rust-version` を 1.87 に (`alice-zip` の要求) `crates/alice-sfnt` は 1.85 のまま 新規に root の MSRV CI job を追加
 - `Cargo.toml` に `[workspace]` (members `.` と `crates/alice-sfnt`、`fuzz` と `tools/render-ref` は除外)
