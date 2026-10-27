@@ -1,6 +1,6 @@
 [package]
 name = "alice-font"
-version = "0.7.6"
+version = "0.8.0"
 edition = "2021"
 # alice-zip (the Law identifier hasher, ALICE-Law G7 / G8) sets a rust-version of 1.87;
 # the lockfile cannot resolve a dependency whose own rust-version exceeds ours.
