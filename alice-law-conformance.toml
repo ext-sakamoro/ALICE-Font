@@ -36,6 +36,11 @@ evidence = [
     "per-site-class tie tests in src/law_float.rs::tests: the det-math min / max order a ±0 pair (-0 < +0) where the platform functions are unspecified, clamp orders the sign of a zero at a bound, and a NaN with a number gives the number; a non-finite input does not panic",
     "the nine G6 recorded-bit goldens are unchanged by the routing (the glyph geometry feeds these sites no ±0 or NaN pair), so FONT_SEMANTICS_ID (G6) does not move and there is no new previous-identifier to record (G9)",
 ]
+tie_tests = [
+    "min / max of a zero pair: src/law_float.rs::law_min_max_order_the_sign_of_a_zero_pair",
+    "clamp with a zero at a bound: src/law_float.rs::law_clamp_orders_the_sign_of_a_zero_at_a_bound",
+    "a NaN with a number: src/law_float.rs::law_min_max_nan_policy",
+]
 mutant = "measured 2026-10-26, reverted: a site changed back to the platform `f32::min` makes `CLIPPY_CONF_DIR=.github/clippy-lib cargo clippy --lib` report `use of a disallowed method f32::min` (exit 101); the canary step fails if any of the six G2 forms stops getting its diagnostic"
 since = "2026-10-26"
 note = "clamp composes the det-math minimum and maximum because det-math's main does not yet expose a native clamp (its clamp generation is unlanded). The clamp sites (src/game.rs, src/outline/raster.rs, src/glyph/mod.rs) will move again when det-math's clamp replaces the composition, which may round the degenerate lo > hi and NaN cases differently; at that wave re-check whether any G6 golden moves. The min / max sites are final."
@@ -57,7 +62,7 @@ reference_repo = "ALICE-LOL"
 status = "pass"
 evidence = [
     "tests/outline_raster.rs `tests/outline_raster.rs#fn the_output_bits_are_the_same_on_every_platform`: the SHA-ish digest of the rasterised signed distance field of a star overlapping a box, compared to the recorded golden `tests/outline_raster.rs#const STAR_DIGEST: u64 = 0xa09e_8903_c20e_2b17`; `tests/outline_raster.rs#fn a_star_is_its_brute_force` is the independent oracle (the rasteriser against a closed-form polygon SDF), and tests/analytic_oracle.rs pins the stroke and pen closed forms within their proven bounds",
-    ".github/workflows/ci.yml test job `.github/workflows/ci.yml#- name: Test` runs cargo test --test outline_raster; scripts/preflight.sh `scripts/preflight.sh#cargo test --test outline_raster`",
+    ".github/workflows/ci.yml test job `.github/workflows/ci.yml#run: cargo test --test outline_raster` runs it; scripts/preflight.sh `scripts/preflight.sh#cargo test --test outline_raster`",
 ]
 mutant = "measured 2026-10-26, reverted: shifting a production sample point in src/outline/raster.rs (`(py as f64 + 0.5)` to `(py as f64 + 0.5001)`) makes the_output_bits_are_the_same_on_every_platform fail (digest 0x382d33e3f196e992, recorded 0xa09e8903c20e2b17) in debug and in release"
 since = ""
@@ -95,6 +100,11 @@ evidence = [
     "the one-arithmetic compile-time guard of G7 ties the identifier a reader recomputes to the generation it was recorded under",
     "tests/law_stamp.rs exercises the tampered-identifier, wrong-form, bad-magic, unknown-version, truncated and foreign-semantics rejections for the byte form and the serde envelope; run through scripts/run_tests.sh in CI and preflight",
 ]
+writers = [
+    "src/law_stamp.rs::stamped",
+    "src/law_stamp.rs::seal",
+]
+legacy = "none"
 mutant = "measured 2026-10-26, each reverted: removing read's identifier comparison reds the three rejection tests (shared with G7); re-adding `serde::Deserialize` to a payload derive makes no_payload_type_implements_deserialize red (the static scan finds Deserialize in a payload module)"
 since = "2026-10-26"
 note = "the crate still writes no font file of its own (crates/alice-sfnt is a reader that validates its own read-side magic); G8 here is the verifying reader for the crate's own stamped output. The only deserialization entry is the validating envelope; a bare shader payload cannot be deserialized at all, because those types do not implement Deserialize. The payloads keep Serialize (for emission), so a caller can still write an unstamped form of the geometry, but this crate reads nothing back without the stamp, so an unstamped write cannot be read in through any crate path."
@@ -141,7 +151,6 @@ status = "pass"
 evidence = [
     ".github/workflows/public-text.yml (pushes to main and ci/**, pull requests to main) and scripts/public_text.sh (fetches ALICE-Law's scripts/public_text_check.py at .github/public-text-pin, refuses it unless the SHA-256 matches, exits 2 when it compared nothing)",
     ".github/public-text-pin and scripts/test_public_text.py",
-    "scripts/preflight.sh (`scripts/preflight.sh#eol.yml / public-text.yml: Line endings and public text`)",
 ]
 mutant = "scripts/test_public_text.py (13 tests, measured 2026-10-26, exit 0) is the checker's canary: a planted line matching one of the checker's forbidden classes is reported as a finding, and a scan that compared nothing exits 2; the crate's own tree is 0 findings in 238 files at HEAD and in the 3 commits of this stack"
 since = ""
