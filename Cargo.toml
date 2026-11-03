@@ -35,7 +35,7 @@ exclude = ["fuzz", "tools/render-ref"]
 pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
 serde = { version = "1", optional = true, features = ["derive"] }
 alice-sdf = { version = "2", optional = true, default-features = false }
-alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "6384856c8b00f1615e1cd6b5c74d88036c1a8706", version = "0.5.2", default-features = false }
+alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", rev = "2d01c63ff0849cf0ab82eafb89f87f1b729bd2a8", version = "0.5.2", default-features = false }
 
 [dev-dependencies]
 serde_json = "1"
