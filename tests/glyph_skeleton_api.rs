@@ -52,7 +52,8 @@ fn a_skeleton_rasterises_to_what_generate_draws() {
         let gen = GlyphGenerator::new(&p);
         for ch in characters() {
             if let Some(s) = skeleton(ch, &p) {
-                assert!(s.stroke_count > 0, "{ch:?}: a skeleton without strokes");
+                // only whitespace has no strokes (tests/glyph_whitespace.rs)
+                assert!(s.stroke_count > 0 || ch == ' ', "{ch:?}: a skeleton without strokes");
                 assert!(
                     same(&gen.generate_from_skeleton(&s), &generate(ch, &p)),
                     "{ch:?}: the skeleton does not rasterise to generate's glyph"
@@ -75,8 +76,9 @@ fn none_is_exactly_the_placeholder() {
             .filter_map(char::from_u32)
             .filter(|&c| skeleton(c, &p).is_none())
             .collect();
-        // coverage (spec): every printable ASCII byte but the space has a glyph
-        assert_eq!(ascii_none, vec![' ']);
+        // coverage (spec): every printable ASCII byte has a glyph (the space an empty one,
+        // tests/glyph_whitespace.rs)
+        assert!(ascii_none.is_empty(), "{ascii_none:?}");
         for w in ascii_none.windows(2) {
             assert!(
                 same(&generate(w[0], &p), &generate(w[1], &p)),
