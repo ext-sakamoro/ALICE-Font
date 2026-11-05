@@ -37,7 +37,7 @@ pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
 /// Build the stroke skeleton for a hiragana character. Returns `None` for
 /// characters that aren't implemented yet (so the caller can render a
 /// placeholder rather than panic).
-fn build_skeleton(ch: char) -> Option<GlyphSkeleton> {
+pub(crate) fn build_skeleton(ch: char) -> Option<GlyphSkeleton> {
     match ch {
         'あ' => Some(build_a()),
         'い' => Some(build_i()),

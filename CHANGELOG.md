@@ -12,6 +12,7 @@ All notable changes to ALICE-Font will be documented in this file.
 - `FONT_SEMANTICS_CHECKED_AT` を 0.8.0 にした (固定入力 9 本の記録 bit は 0.8.0 で取り直して同じ)
 
 ### Added
+- `glyph_dispatcher::skeleton(ch, &MetaFontParams) -> Option<GlyphSkeleton>`: `generate` が rasterize する stroke の骨格 (Bezier、em 単位) を ASCII・ひらがな・カタカナ・漢字の全部で返す glyph の無い文字は `None` (`generate` は placeholder を描く) `GlyphGenerator::new(params).generate_from_skeleton(&s)` は `generate(ch, params)` と bit 一致 (試験 `tests/glyph_skeleton_api.rs`) これまで ASCII とかなの骨格は crate の外から取れず、標本化した 64×64 の場だけが公開されていた
 
 - `FONT_SEMANTICS_ID` (`src/semantics.rs`、ALICE-Law G6): 固定入力 9 本の記録 bit (outline raster SDF / parametric glyph SDF / pen 半幅の角度掃引 / medial axis / std140 の analytical・outline・skeleton payload / styled pixels) と `alice-det-math` の識別子を畳んだ内容ハッシュ `tests/semantics_golden.rs` が各 scenario の SHA-256 を記録、`tests/font_semantics_id.rs` が畳み・1 bit 変化・cfg 非依存・版 toolchain 鮮度・det-math の実体一致を検証 全 OS leg で bit 再現
 - `law_stamp` module (ALICE-Law G7 / G8): 直列化した字形幾何に Law 識別子を刻む `StampedForm` (`law_id` / `stamped`) と `read`、serde 相互運用の `StampedEnvelope` (magic + 版 + 識別子 + body) raw std140 bytes は同一 build の shader が読むため無刻印のまま (`scripts/api_boundary.py` が分類、未分類の新規 byte 出力は fail) 依存 `alice-zip` (git rev、`LawIdHasher` v2) を追加、`alice-det-math` 世代の compile 時整合 guard (別世代で compile fail)

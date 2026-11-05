@@ -140,9 +140,15 @@ impl GlyphGenerator {
         self.rasterize_sdf(skeleton)
     }
 
-    /// Build stroke skeleton for a character
+    /// Build stroke skeleton for a character (the placeholder box for a byte without a glyph)
     fn build_skeleton(&self, ch: u8) -> GlyphSkeleton {
-        match ch {
+        self.known_skeleton(ch)
+            .unwrap_or_else(|| self.build_placeholder(ch))
+    }
+
+    /// The stroke skeleton of an ASCII byte that has a glyph, `None` for the others
+    pub(crate) fn known_skeleton(&self, ch: u8) -> Option<GlyphSkeleton> {
+        Some(match ch {
             // Uppercase A-Z
             b'A' => self.build_uppercase_a(),
             b'B' => self.build_uppercase_b(),
@@ -210,8 +216,8 @@ impl GlyphGenerator {
             b'9' => self.build_digit_9(),
             // Punctuation and symbols
             0x21..=0x2F | 0x3A..=0x40 | 0x5B..=0x60 | 0x7B..=0x7E => self.build_punct(ch),
-            _ => self.build_placeholder(ch),
-        }
+            _ => return None,
+        })
     }
 
     fn build_uppercase_a(&self) -> GlyphSkeleton {

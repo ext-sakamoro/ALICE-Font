@@ -11,7 +11,7 @@
 //! SPDX-License-Identifier: LicenseRef-Proprietary
 //! Author: Moroya Sakamoto
 
-use crate::glyph::{hiragana, kanji, katakana, GlyphGenerator, GlyphSdf};
+use crate::glyph::{hiragana, kanji, katakana, GlyphGenerator, GlyphSdf, GlyphSkeleton};
 use crate::param::MetaFontParams;
 
 /// ASCII printable range (matches the existing `GlyphGenerator` coverage).
@@ -46,6 +46,30 @@ pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
         let mut sdf = GlyphSdf::empty();
         sdf.advance = 0.5;
         sdf
+    }
+}
+
+/// The stroke skeleton `generate` rasterises for `ch`, or `None` when it has no glyph for it
+/// (it then draws a placeholder: a box for an ASCII byte, the empty field otherwise).
+///
+/// `GlyphGenerator::new(params).generate_from_skeleton(&s)` is `generate(ch, params)` bit for
+/// bit. The skeleton is the law of the glyph (Bezier strokes in em units), so it can be
+/// evaluated analytically instead of sampled (for example by `sdf_bridge` with the `sdf`
+/// feature). `params` shapes the ASCII skeletons (heights, serifs); the kana and kanji
+/// skeletons do not depend on it.
+#[must_use]
+pub fn skeleton(ch: char, params: &MetaFontParams) -> Option<GlyphSkeleton> {
+    let cp = ch as u32;
+    if in_range(cp, ASCII_RANGE) {
+        GlyphGenerator::new(params).known_skeleton(ch as u8)
+    } else if in_range(cp, HIRAGANA_RANGE) {
+        hiragana::build_skeleton(ch)
+    } else if in_range(cp, KATAKANA_RANGE) {
+        katakana::build_skeleton(ch)
+    } else if in_range(cp, CJK_UNIFIED_RANGE) {
+        kanji::build_skeleton(ch)
+    } else {
+        None
     }
 }
 

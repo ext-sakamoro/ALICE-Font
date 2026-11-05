@@ -15,7 +15,10 @@ use alice_font::glyph_dispatcher::{self, generate, skeleton};
 use alice_font::MetaFontParams;
 
 fn same(a: &GlyphSdf, b: &GlyphSdf) -> bool {
-    a.data.iter().zip(&b.data).all(|(x, y)| x.to_bits() == y.to_bits())
+    a.data
+        .iter()
+        .zip(&b.data)
+        .all(|(x, y)| x.to_bits() == y.to_bits())
         && a.advance.to_bits() == b.advance.to_bits()
         && a.lsb.to_bits() == b.lsb.to_bits()
         && a.bbox_min.x.to_bits() == b.bbox_min.x.to_bits()
@@ -25,7 +28,10 @@ fn same(a: &GlyphSdf, b: &GlyphSdf) -> bool {
 }
 
 fn params() -> [MetaFontParams; 2] {
-    [MetaFontParams::sans_regular(), MetaFontParams::serif_italic()]
+    [
+        MetaFontParams::sans_regular(),
+        MetaFontParams::serif_italic(),
+    ]
 }
 
 /// Every character of a range the dispatcher routes, plus every registered kanji.
@@ -69,21 +75,35 @@ fn none_is_exactly_the_placeholder() {
             .filter_map(char::from_u32)
             .filter(|&c| skeleton(c, &p).is_none())
             .collect();
+        // coverage (spec): every printable ASCII byte but the space has a glyph
+        assert_eq!(ascii_none, vec![' ']);
         for w in ascii_none.windows(2) {
-            assert!(same(&generate(w[0], &p), &generate(w[1], &p)), "{:?} vs {:?}", w[0], w[1]);
+            assert!(
+                same(&generate(w[0], &p), &generate(w[1], &p)),
+                "{:?} vs {:?}",
+                w[0],
+                w[1]
+            );
         }
         // the placeholder box is not any real glyph
         for c in ('A'..='Z').chain('a'..='z').chain('0'..='9') {
             let s = skeleton(c, &p).unwrap_or_else(|| panic!("{c:?} has a glyph"));
             if let Some(&n) = ascii_none.first() {
-                assert!(!same(&GlyphGenerator::new(&p).generate_from_skeleton(&s), &generate(n, &p)));
+                assert!(!same(
+                    &GlyphGenerator::new(&p).generate_from_skeleton(&s),
+                    &generate(n, &p)
+                ));
             }
         }
         // kana / kanji / other: None ⇔ the empty field
         let empty = GlyphSdf::empty();
         for ch in characters().into_iter().filter(|c| (*c as u32) > 0x7E) {
             let none = skeleton(ch, &p).is_none();
-            let blank = generate(ch, &p).data.iter().zip(&empty.data).all(|(x, y)| x.to_bits() == y.to_bits());
+            let blank = generate(ch, &p)
+                .data
+                .iter()
+                .zip(&empty.data)
+                .all(|(x, y)| x.to_bits() == y.to_bits());
             assert_eq!(none, blank, "{ch:?}");
         }
         assert!(skeleton('鬱', &p).is_none());
@@ -100,5 +120,8 @@ fn every_registered_kanji_and_basic_kana_have_a_skeleton() {
     for c in "あいうえおアイウエオ".chars() {
         assert!(skeleton(c, &p).is_some(), "{c:?}");
     }
-    assert_eq!(glyph_dispatcher::category('鬱'), glyph_dispatcher::GlyphCategory::CjkUnified);
+    assert_eq!(
+        glyph_dispatcher::category('鬱'),
+        glyph_dispatcher::GlyphCategory::CjkUnified
+    );
 }

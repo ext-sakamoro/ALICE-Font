@@ -29,7 +29,7 @@ pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
     )
 }
 
-fn build_skeleton(ch: char) -> Option<GlyphSkeleton> {
+pub(crate) fn build_skeleton(ch: char) -> Option<GlyphSkeleton> {
     match ch {
         'ア' => Some(build_a()),
         'イ' => Some(build_i()),
