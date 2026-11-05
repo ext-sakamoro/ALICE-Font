@@ -11,7 +11,9 @@
 //! SPDX-License-Identifier: LicenseRef-Proprietary
 //! Author: Moroya Sakamoto
 
-use crate::glyph::{hiragana, kanji, katakana, GlyphGenerator, GlyphSdf, GlyphSkeleton};
+use crate::glyph::{
+    hiragana, kanji, katakana, GlyphGenerator, GlyphSdf, GlyphSkeleton, IDEOGRAPHIC_SPACE_ADVANCE,
+};
 use crate::param::MetaFontParams;
 
 /// ASCII printable range (matches the existing `GlyphGenerator` coverage).
@@ -33,7 +35,10 @@ pub const CJK_UNIFIED_RANGE: (u32, u32) = (0x4E00, 0x9FFF);
 #[must_use]
 pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
     let cp = ch as u32;
-    if in_range(cp, ASCII_RANGE) {
+    if ch == '\u{3000}' {
+        GlyphGenerator::new(params)
+            .generate_from_skeleton(&GlyphSkeleton::whitespace(IDEOGRAPHIC_SPACE_ADVANCE))
+    } else if in_range(cp, ASCII_RANGE) {
         let gen = GlyphGenerator::new(params);
         gen.generate(ch as u8)
     } else if in_range(cp, HIRAGANA_RANGE) {
@@ -50,7 +55,8 @@ pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
 }
 
 /// The stroke skeleton `generate` rasterises for `ch`, or `None` when it has no glyph for it
-/// (it then draws a placeholder: a box for an ASCII byte, the empty field otherwise).
+/// (it then draws a placeholder: a box for an ASCII byte, the empty field otherwise). Whitespace
+/// (U+0020, U+3000) has a glyph: `Some` skeleton without strokes that only advances the pen.
 ///
 /// `GlyphGenerator::new(params).generate_from_skeleton(&s)` is `generate(ch, params)` bit for
 /// bit. The skeleton is the law of the glyph (Bezier strokes in em units), so it can be
@@ -60,7 +66,9 @@ pub fn generate(ch: char, params: &MetaFontParams) -> GlyphSdf {
 #[must_use]
 pub fn skeleton(ch: char, params: &MetaFontParams) -> Option<GlyphSkeleton> {
     let cp = ch as u32;
-    if in_range(cp, ASCII_RANGE) {
+    if ch == '\u{3000}' {
+        Some(GlyphSkeleton::whitespace(IDEOGRAPHIC_SPACE_ADVANCE))
+    } else if in_range(cp, ASCII_RANGE) {
         GlyphGenerator::new(params).known_skeleton(ch as u8)
     } else if in_range(cp, HIRAGANA_RANGE) {
         hiragana::build_skeleton(ch)

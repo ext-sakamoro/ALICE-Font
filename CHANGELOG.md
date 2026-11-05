@@ -11,6 +11,9 @@ All notable changes to ALICE-Font will be documented in this file.
 - **Breaking:** 直列化した字形の payload 9 型から `Deserialize` を外した (Removed の項目) 刻印の無い bytes は読まず、`law_stamp::read` が Law 識別子を確かめてから復元する 外から payload を `serde` で読んでいた呼び出しは `law_stamp` に移す
 - `FONT_SEMANTICS_CHECKED_AT` を 0.8.0 にした (固定入力 9 本の記録 bit は 0.8.0 で取り直して同じ)
 
+### Fixed
+- 空白は glyph の無い文字ではなく、何も描かない glyph にした: `glyph_dispatcher::generate(' ')` はこれまで placeholder の箱を描いていた U+0020 は 1/4 em (U+2005 FOUR-PER-EM SPACE)、U+3000 (全角の空白) は 1 em (かな・漢字の送り) だけ進み、場は空、box は空の場の box `skeleton` は空白に stroke の無い `Some` を返し、`None` は glyph の無い文字だけ stroke の無い骨格の rasterize は空の場を返す (これまでは box が反転した極値になった) 試験 `tests/glyph_whitespace.rs`
+
 ### Added
 - `glyph_dispatcher::skeleton(ch, &MetaFontParams) -> Option<GlyphSkeleton>`: `generate` が rasterize する stroke の骨格 (Bezier、em 単位) を ASCII・ひらがな・カタカナ・漢字の全部で返す glyph の無い文字は `None` (`generate` は placeholder を描く) `GlyphGenerator::new(params).generate_from_skeleton(&s)` は `generate(ch, params)` と bit 一致 (試験 `tests/glyph_skeleton_api.rs`) これまで ASCII とかなの骨格は crate の外から取れず、標本化した 64×64 の場だけが公開されていた
 

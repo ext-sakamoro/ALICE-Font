@@ -24,6 +24,11 @@ mod upper;
 /// SDF resolution for a single glyph tile
 pub const GLYPH_SDF_SIZE: usize = 64;
 
+/// Advance of the word space (U+0020): a quarter of the em (U+2005 FOUR-PER-EM SPACE)
+pub const SPACE_ADVANCE: f32 = 0.25;
+/// Advance of the ideographic space (U+3000): one em, as the full-width kana and kanji
+pub const IDEOGRAPHIC_SPACE_ADVANCE: f32 = 1.0;
+
 /// SDF glyph data (1024 bytes for 32×32 f32)
 pub struct GlyphSdf {
     /// SDF values: positive = outside, negative = inside
@@ -96,6 +101,14 @@ impl GlyphSkeleton {
         }
     }
 
+    /// A glyph that draws nothing and advances the pen by `advance` (em units)
+    #[must_use]
+    pub fn whitespace(advance: f32) -> Self {
+        let mut s = Self::empty();
+        s.advance = advance;
+        s
+    }
+
     pub const fn add_stroke(&mut self, stroke: Stroke) {
         if self.stroke_count < MAX_GLYPH_STROKES {
             self.strokes[self.stroke_count] = stroke;
@@ -149,6 +162,8 @@ impl GlyphGenerator {
     /// The stroke skeleton of an ASCII byte that has a glyph, `None` for the others
     pub(crate) fn known_skeleton(&self, ch: u8) -> Option<GlyphSkeleton> {
         Some(match ch {
+            // the word space: nothing drawn
+            b' ' => GlyphSkeleton::whitespace(SPACE_ADVANCE),
             // Uppercase A-Z
             b'A' => self.build_uppercase_a(),
             b'B' => self.build_uppercase_b(),
@@ -563,6 +578,10 @@ impl GlyphGenerator {
 
         let mut sdf = GlyphSdf::empty();
         sdf.advance = skeleton.advance;
+        if skeleton.stroke_count == 0 {
+            // nothing to draw (whitespace): the empty field
+            return sdf;
+        }
 
         // Compute bounding box
         let (bb_min, bb_max) = self.compute_bbox(skeleton);

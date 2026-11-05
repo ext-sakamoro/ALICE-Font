@@ -27,7 +27,10 @@ fn params() -> [MetaFontParams; 3] {
 
 fn blank(sdf: &GlyphSdf) -> bool {
     let empty = GlyphSdf::empty();
-    sdf.data.iter().zip(&empty.data).all(|(a, b)| a.to_bits() == b.to_bits())
+    sdf.data
+        .iter()
+        .zip(&empty.data)
+        .all(|(a, b)| a.to_bits() == b.to_bits())
 }
 
 #[test]
@@ -37,7 +40,26 @@ fn whitespace_draws_nothing_and_advances() {
             let g = generate(ch, &p);
             assert!(blank(&g), "{ch:?}: something is drawn");
             assert!(g.data.iter().all(|v| *v > 0.0), "{ch:?}: a point is inside");
-            assert_eq!(g.advance.to_bits(), advance.to_bits(), "{ch:?}: advance {}", g.advance);
+            assert_eq!(
+                g.advance.to_bits(),
+                advance.to_bits(),
+                "{ch:?}: advance {}",
+                g.advance
+            );
+            // the box of nothing is the empty field's box (finite, min below max), not the
+            // inverted extremes a stroke-less bounding box would give
+            let e = GlyphSdf::empty();
+            for (got, want) in [(g.bbox_min, e.bbox_min), (g.bbox_max, e.bbox_max)] {
+                assert!(
+                    got.x.is_finite() && got.y.is_finite(),
+                    "{ch:?}: bbox {got:?}"
+                );
+                assert_eq!(
+                    (got.x.to_bits(), got.y.to_bits()),
+                    (want.x.to_bits(), want.y.to_bits()),
+                    "{ch:?}"
+                );
+            }
         }
     }
 }
@@ -65,6 +87,12 @@ fn whitespace_is_not_the_placeholder_box() {
     // the box generate draws for a byte without a glyph has points inside
     let p = MetaFontParams::sans_regular();
     let boxed = GlyphGenerator::new(&p).generate(0x7F);
-    assert!(boxed.data.iter().any(|v| *v < 0.0), "the placeholder draws a box");
-    assert!(!blank(&generate(' ', &p)));
+    assert!(
+        boxed.data.iter().any(|v| *v < 0.0),
+        "the placeholder draws a box"
+    );
+    assert!(
+        blank(&generate(' ', &p)),
+        "the space draws the placeholder box"
+    );
 }

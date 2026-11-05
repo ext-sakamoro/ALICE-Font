@@ -53,7 +53,10 @@ fn a_skeleton_rasterises_to_what_generate_draws() {
         for ch in characters() {
             if let Some(s) = skeleton(ch, &p) {
                 // only whitespace has no strokes (tests/glyph_whitespace.rs)
-                assert!(s.stroke_count > 0 || ch == ' ', "{ch:?}: a skeleton without strokes");
+                assert!(
+                    s.stroke_count > 0 || ch == ' ',
+                    "{ch:?}: a skeleton without strokes"
+                );
                 assert!(
                     same(&gen.generate_from_skeleton(&s), &generate(ch, &p)),
                     "{ch:?}: the skeleton does not rasterise to generate's glyph"
