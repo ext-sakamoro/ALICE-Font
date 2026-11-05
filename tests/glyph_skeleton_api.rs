@@ -39,7 +39,8 @@ fn characters() -> Vec<char> {
     let mut v: Vec<char> = (0x20u32..=0x7E).filter_map(char::from_u32).collect();
     v.extend((0x3040u32..=0x30FF).filter_map(char::from_u32));
     v.extend(KANJI_DB.iter().map(|d| d.codepoint));
-    // an unregistered kanji and a character outside every range
+    // the ideographic space, an unregistered kanji and a character outside every range
+    v.push('\u{3000}');
     v.push('鬱');
     v.push('€');
     v
@@ -54,7 +55,7 @@ fn a_skeleton_rasterises_to_what_generate_draws() {
             if let Some(s) = skeleton(ch, &p) {
                 // only whitespace has no strokes (tests/glyph_whitespace.rs)
                 assert!(
-                    s.stroke_count > 0 || ch == ' ',
+                    s.stroke_count > 0 || ch == ' ' || ch == '\u{3000}',
                     "{ch:?}: a skeleton without strokes"
                 );
                 assert!(
@@ -72,35 +73,37 @@ fn a_skeleton_rasterises_to_what_generate_draws() {
 #[test]
 fn none_is_exactly_the_placeholder() {
     for p in params() {
-        // the ASCII placeholder (a box) is the same for every byte that has no glyph; '\x7F'
-        // is outside the routed range, so take a byte the table leaves out: '~' if it has no
-        // glyph, otherwise the first one found
+        // coverage (spec): every printable ASCII byte has a glyph (the space an empty one,
+        // tests/glyph_whitespace.rs), so no printable byte is None
         let ascii_none: Vec<char> = (0x20u32..=0x7E)
             .filter_map(char::from_u32)
             .filter(|&c| skeleton(c, &p).is_none())
             .collect();
-        // coverage (spec): every printable ASCII byte has a glyph (the space an empty one,
-        // tests/glyph_whitespace.rs)
         assert!(ascii_none.is_empty(), "{ascii_none:?}");
-        for w in ascii_none.windows(2) {
-            assert!(
-                same(&generate(w[0], &p), &generate(w[1], &p)),
-                "{:?} vs {:?}",
-                w[0],
-                w[1]
-            );
+        // the placeholder itself: bytes outside the printable range drawn by the generator
+        // (DEL and the control bytes) all get the same box, which has ink and is no real glyph
+        let gen = GlyphGenerator::new(&p);
+        let boxes: Vec<GlyphSdf> = [0x01u8, 0x1F, 0x7F, 0x80, 0xFF]
+            .iter()
+            .map(|&b| gen.generate(b))
+            .collect();
+        assert!(boxes.len() > 1);
+        for w in boxes.windows(2) {
+            assert!(same(&w[0], &w[1]), "the placeholder differs between bytes");
         }
-        // the placeholder box is not any real glyph
+        assert!(
+            boxes[0].data.iter().any(|v| *v < 0.0),
+            "the placeholder draws nothing"
+        );
         for c in ('A'..='Z').chain('a'..='z').chain('0'..='9') {
             let s = skeleton(c, &p).unwrap_or_else(|| panic!("{c:?} has a glyph"));
-            if let Some(&n) = ascii_none.first() {
-                assert!(!same(
-                    &GlyphGenerator::new(&p).generate_from_skeleton(&s),
-                    &generate(n, &p)
-                ));
-            }
+            assert!(
+                !same(&gen.generate_from_skeleton(&s), &boxes[0]),
+                "{c:?} draws the placeholder box"
+            );
         }
-        // kana / kanji / other: None ⇔ the empty field
+        // kana / kanji / other: None ⇔ the empty field, except whitespace (U+3000), which is
+        // blank but has a glyph (an empty skeleton, tests/glyph_whitespace.rs)
         let empty = GlyphSdf::empty();
         for ch in characters().into_iter().filter(|c| (*c as u32) > 0x7E) {
             let none = skeleton(ch, &p).is_none();
@@ -109,7 +112,7 @@ fn none_is_exactly_the_placeholder() {
                 .iter()
                 .zip(&empty.data)
                 .all(|(x, y)| x.to_bits() == y.to_bits());
-            assert_eq!(none, blank, "{ch:?}");
+            assert_eq!(none, blank && ch != '\u{3000}', "{ch:?}");
         }
         assert!(skeleton('鬱', &p).is_none());
         assert!(skeleton('€', &p).is_none());
