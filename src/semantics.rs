@@ -174,30 +174,7 @@ pub const DET_MATH_PINS: &[(&str, [u8; 32])] = &[
     ),
 ];
 
-const fn same_bytes(a: &[u8; 32], b: &[u8; 32]) -> bool {
-    let mut i = 0;
-    while i < 32 {
-        if a[i] != b[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-const _: () = {
-    let mut i = 0;
-    while i < DET_MATH_PINS.len() {
-        assert!(
-            same_bytes(
-                &DET_MATH_PINS[i].1,
-                &alice_det_math::function_pin(DET_MATH_PINS[i].0)
-            ),
-            "a function this crate calls moved in alice-det-math: re-record DET_MATH_PINS and FONT_SEMANTICS_ID",
-        );
-        i += 1;
-    }
-};
+const _: () = alice_det_math::assert_function_pins(DET_MATH_PINS);
 
 /// The crate version and toolchain the pins were last checked against
 pub const FONT_SEMANTICS_CHECKED_AT: (&str, &str) = ("0.8.0", "1.98.1");
