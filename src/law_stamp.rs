@@ -12,42 +12,16 @@
 //! `kind` tag and [`crate::semantics::FONT_SEMANTICS_ID`] over the body bytes. Equal identifier means
 //! the two builds compute the same bytes for that form (the guarantee of `FONT_SEMANTICS_ID`, G6).
 //!
-//! # One arithmetic
+//! # Earlier identifiers
 //!
-//! `FONT_SEMANTICS_ID` was folded against one `alice-det-math` generation; evaluating the identifier
-//! against another would silently mix arithmetics. [`DET_MATH_GENERATION`] is that generation and the
-//! `const` block below fails the compile if the resolved `alice_det_math::SEMANTICS_ID` is not it.
-//! alice-zip pins the same `alice-det-math` revision, so cargo resolves one copy across the graph.
+//! `read` takes a stamp made under a value of [`PREVIOUS_SEMANTICS_IDS`] as well: those builds computed the same
+//! bytes for every pinned scenario. Any other identifier is a [`StampError::SemanticsMismatch`].
 
 use alloc::vec::Vec;
 
 use alice_zip::law_id::LawIdHasher;
 
-use crate::semantics::FONT_SEMANTICS_ID;
-
-/// The `alice-det-math` generation [`FONT_SEMANTICS_ID`] was folded against (its `SEMANTICS_ID`).
-pub const DET_MATH_GENERATION: [u8; 32] = [
-    0x85, 0xe0, 0x88, 0x46, 0x23, 0xb1, 0x54, 0xa3, 0xb2, 0xb2, 0x64, 0x37, 0x49, 0x07, 0xb6, 0xcb,
-    0xac, 0x09, 0x30, 0x7c, 0xa3, 0xf9, 0xa0, 0x83, 0x39, 0xe4, 0x8c, 0x56, 0x7d, 0x3c, 0xb3, 0x15,
-];
-
-const fn same32(a: &[u8; 32], b: &[u8; 32]) -> bool {
-    let mut i = 0;
-    while i < 32 {
-        if a[i] != b[i] {
-            return false;
-        }
-        i += 1;
-    }
-    true
-}
-
-// A different arithmetic would make FONT_SEMANTICS_ID (and every identifier here) name geometry a
-// consumer cannot reproduce. Re-record FONT_SEMANTICS_ID and this generation together when it moves.
-const _: () = assert!(
-    same32(&alice_det_math::SEMANTICS_ID, &DET_MATH_GENERATION),
-    "alice-det-math generation changed: re-record FONT_SEMANTICS_ID (G6) and DET_MATH_GENERATION",
-);
+use crate::semantics::{FONT_SEMANTICS_ID, PREVIOUS_SEMANTICS_IDS};
 
 /// The envelope magic: a non-ASCII first byte (so no ASCII magic of another format collides, and a
 /// transfer that strips the eighth bit changes it), then `ALF`, then the usual CR LF ^Z LF.
@@ -79,8 +53,8 @@ pub enum StampError {
     Truncated,
     /// The `kind` tag does not match the one the reader expected (wrong form).
     WrongKind,
-    /// The stamped identifier is not the one this build computes for the body: the bytes were
-    /// produced by a build that computes different geometry, or the body was altered or truncated in
+    /// The stamped identifier is neither the one this build computes for the body nor one of an earlier
+    /// identifier that computed the same bytes: the bytes were produced by a build that computes different geometry, or the body was altered or truncated in
     /// transit. Both identifiers are named.
     SemanticsMismatch {
         /// The identifier the bytes carry.
@@ -96,6 +70,21 @@ pub fn law_id(kind: &[u8], body: &[u8]) -> [u8; 32] {
     LawIdHasher::new(kind, &FONT_SEMANTICS_ID)
         .bytes(body)
         .finish()
+}
+
+/// The stamped identifier is the one this build computes for `body`, or the one a build under a value of
+/// [`PREVIOUS_SEMANTICS_IDS`] computed.
+fn check_identifier(kind: &[u8], body: &[u8], stamped: &[u8; 32]) -> Result<(), StampError> {
+    let recomputed = law_id(kind, body);
+    let under_earlier =
+        |earlier: &[u8; 32]| LawIdHasher::new(kind, earlier).bytes(body).finish() == *stamped;
+    if recomputed == *stamped || PREVIOUS_SEMANTICS_IDS.iter().any(under_earlier) {
+        return Ok(());
+    }
+    Err(StampError::SemanticsMismatch {
+        stamped: *stamped,
+        recomputed,
+    })
 }
 
 /// A canonical, unambiguous byte string for a multi-chunk form: the chunk count as a big-endian
@@ -166,13 +155,7 @@ pub fn read<'b>(expected_kind: &[u8], bytes: &'b [u8]) -> Result<&'b [u8], Stamp
     let mut stamped = [0u8; 32];
     stamped.copy_from_slice(&bytes[12..HEADER_LEN]);
     let body = &bytes[HEADER_LEN..];
-    let recomputed = law_id(expected_kind, body);
-    if recomputed != stamped {
-        return Err(StampError::SemanticsMismatch {
-            stamped,
-            recomputed,
-        });
-    }
+    check_identifier(expected_kind, body, &stamped)?;
     Ok(body)
 }
 
@@ -269,13 +252,7 @@ impl StampedEnvelope {
         if self.kind.as_bytes() != expected_kind {
             return Err(StampError::WrongKind);
         }
-        let recomputed = law_id(expected_kind, &self.body);
-        if recomputed != self.law_id {
-            return Err(StampError::SemanticsMismatch {
-                stamped: self.law_id,
-                recomputed,
-            });
-        }
+        check_identifier(expected_kind, &self.body, &self.law_id)?;
         Ok(&self.body)
     }
 }

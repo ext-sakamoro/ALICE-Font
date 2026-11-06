@@ -1,5 +1,5 @@
-//! [`FONT_SEMANTICS_ID`] is the fold of the recorded-bit goldens of `tests/semantics_golden.rs` and of
-//! alice-det-math's identifier.
+//! [`FONT_SEMANTICS_ID`] is the fold of the recorded-bit goldens of `tests/semantics_golden.rs` and of the
+//! identifier of each alice-det-math function this crate calls.
 //!
 //! Every digest is read from the golden test that records it, so changing a recorded scenario without
 //! re-recording the entry (or the entry without the identifier) fails here, and so does a golden that no entry
@@ -8,7 +8,10 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use alice_font::semantics::{FONT_SEMANTICS_CHECKED_AT, FONT_SEMANTICS_ID, FONT_SEMANTICS_PINS};
+use alice_font::semantics::{
+    DET_MATH_FUNCTIONS, DET_MATH_PINS, FONT_SEMANTICS_CHECKED_AT, FONT_SEMANTICS_ID,
+    FONT_SEMANTICS_PINS, PREVIOUS_SEMANTICS_IDS,
+};
 use sha2::{Digest, Sha256};
 
 fn sha256(bytes: &[u8]) -> [u8; 32] {
@@ -306,7 +309,6 @@ fn the_entries_are_exactly_the_recorded_goldens() {
     );
     let pinned: BTreeMap<String, [u8; 32]> = FONT_SEMANTICS_PINS
         .iter()
-        .filter(|(n, _)| !UPSTREAM.contains(n))
         .map(|(n, d)| ((*n).to_string(), *d))
         .collect();
     let golden_names: Vec<&String> = goldens.keys().collect();
@@ -324,45 +326,72 @@ fn the_entries_are_exactly_the_recorded_goldens() {
     }
 }
 
-/// The entries that are upstream identifiers, not goldens of this crate
-const UPSTREAM: &[&str] = &["alice-det-math"];
-
-/// The upstream entry is alice-det-math's identifier at the revision Cargo.toml pins
+/// Each det-math entry is the function's identifier at the commit this build resolves
 #[test]
-fn the_det_math_entry_is_the_resolved_det_math_identifier() {
-    let pin = FONT_SEMANTICS_PINS
+fn every_det_math_entry_is_the_resolved_function() {
+    assert!(!DET_MATH_PINS.is_empty());
+    assert_eq!(DET_MATH_FUNCTIONS.len(), DET_MATH_PINS.len());
+    for (want, (name, digest)) in DET_MATH_FUNCTIONS.iter().zip(DET_MATH_PINS) {
+        assert_eq!(want, name);
+        assert_eq!(
+            hex(digest),
+            hex(&alice_det_math::function_pin(name)),
+            "{name}"
+        );
+    }
+}
+
+/// The fold's entries: a det-math entry goes in under `det-math <function>`
+fn entries() -> Vec<(String, [u8; 32])> {
+    FONT_SEMANTICS_PINS
         .iter()
-        .find(|(n, _)| *n == "alice-det-math")
-        .expect("an alice-det-math entry")
-        .1;
-    assert_eq!(hex(&pin), hex(&alice_det_math::SEMANTICS_ID));
+        .map(|&(n, d)| (n.to_string(), d))
+        .chain(
+            DET_MATH_PINS
+                .iter()
+                .map(|&(n, d)| (format!("det-math {n}"), d)),
+        )
+        .collect()
+}
+
+fn fold_entries(entries: &[(String, [u8; 32])]) -> [u8; 32] {
+    let named: Vec<(&str, [u8; 32])> = entries.iter().map(|(n, d)| (n.as_str(), *d)).collect();
+    fold(&named)
 }
 
 #[test]
 fn the_identifier_is_the_fold_of_the_table() {
-    assert_eq!(hex(&fold(FONT_SEMANTICS_PINS)), hex(&FONT_SEMANTICS_ID));
+    assert_eq!(hex(&fold_entries(&entries())), hex(&FONT_SEMANTICS_ID));
 }
 
 #[test]
 fn the_identifier_is_the_recorded_value() {
     assert_eq!(
         hex(&FONT_SEMANTICS_ID),
-        "210bcb70027cfb9415d15c7b752e2c0ee4350965ca8651285dc713af117366fd"
+        "3c75cddd32266ff4e3a2ca00e15883197de3ed8c4f17f8ab0ddb1d22c40d1232"
     );
 }
 
 #[test]
 fn one_changed_bit_in_any_entry_changes_the_identifier() {
-    for i in 0..FONT_SEMANTICS_PINS.len() {
-        let mut entries = FONT_SEMANTICS_PINS.to_vec();
-        entries[i].1[0] ^= 1;
+    let all = entries();
+    for i in 0..all.len() {
+        let mut changed = all.clone();
+        changed[i].1[0] ^= 1;
         assert_ne!(
-            fold(&entries),
-            fold(FONT_SEMANTICS_PINS),
+            fold_entries(&changed),
+            fold_entries(&all),
             "entry {} does not move the identifier",
-            entries[i].0
+            changed[i].0
         );
     }
+}
+
+#[test]
+fn the_earlier_identifier_is_kept_and_is_not_this_one() {
+    let earlier = unhex32("210bcb70027cfb9415d15c7b752e2c0ee4350965ca8651285dc713af117366fd");
+    assert!(PREVIOUS_SEMANTICS_IDS.contains(&earlier));
+    assert!(!PREVIOUS_SEMANTICS_IDS.contains(&FONT_SEMANTICS_ID));
 }
 
 #[test]

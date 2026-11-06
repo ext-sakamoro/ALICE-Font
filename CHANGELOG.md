@@ -9,6 +9,7 @@ All notable changes to ALICE-Font will be documented in this file.
 版: `alice-font` 0.7.6 → 0.8.0 (最後の release は 0.7.6)
 
 - **Breaking:** 直列化した字形の payload 9 型から `Deserialize` を外した (Removed の項目) 刻印の無い bytes は読まず、`law_stamp::read` が Law 識別子を確かめてから復元する 外から payload を `serde` で読んでいた呼び出しは `law_stamp` に移す
+- **Breaking:** `FONT_SEMANTICS_ID` は `alice-det-math` 全体の識別子でなく、この crate が呼ぶ 15 関数の識別子 (`semantics::DET_MATH_FUNCTIONS` / `DET_MATH_PINS`) を fold する (値は `3c75cddd…`、記録 bit は全部不変、前の値 `210bcb70…` は `PREVIOUS_SEMANTICS_IDS` に) 呼ばない関数が動いても識別子は動かず、呼ぶ関数が動けば compile が止まる `law_stamp::DET_MATH_GENERATION` は削除 `alice-det-math` は 0.5.2 の rev から `branch = "main"` + version 0.6 に、`alice-zip` も同じ branch に
 - `FONT_SEMANTICS_CHECKED_AT` を 0.8.0 にした (固定入力 9 本の記録 bit は 0.8.0 で取り直して同じ)
 
 ### Fixed
@@ -29,6 +30,8 @@ All notable changes to ALICE-Font will be documented in this file.
 
 ### Changed
 
+- `law_stamp::read` と `StampedEnvelope::open` は `PREVIOUS_SEMANTICS_IDS` の値で刻まれた form も読む (0.8.0 より前の build が書いた file を `tests/data/previous-id/` に保存して確かめる)
+- `scripts/id_move_check.py` が `FONT_SEMANTICS_ID` を見る (`scripts/id_move.toml` に登録、CI と preflight に配線)
 - Semver checks workflow は手動の実行 (`workflow_dispatch`) だけにした この crate は crates.io に出さない (`publish = false`) ので、外の利用者の検査は必須の check にしない (CHANGELOG の破壊的変更と rev pin で見る)
 - ALICE-Law G2: library の float min / max / clamp を alice-det-math 経由に統一 (src/law_float.rs: law_min_f32 / law_max_f32 / law_clamp_f32 と _f64、±0 の符号を順序 -0 < +0 に固定し全 target で一致、both-NaN は canonical quiet NaN) 対象 src: game.rs (smoothstep / gradient) / outline/raster.rs (最近辺 fold・segment 投影・reach) / glyph/mod.rs (stroke 投影) / medial_axis/chain_trace.rs (bounding box) lib-clippy が f32 / f64 の min / max / clamp を禁止 (scripts/clippy_lib_gate.toml + canary) + 符号・NaN の tie test clamp は det-math の clamp 世代が未着地のため min/max 合成 (clamp 世代の着地時に再移動) G6 の 9 golden は不変なので FONT_SEMANTICS_ID は据え置き
 - MSRV: root crate の `rust-version` を 1.87 に (`alice-zip` の要求) `crates/alice-sfnt` は 1.85 のまま 新規に root の MSRV CI job を追加

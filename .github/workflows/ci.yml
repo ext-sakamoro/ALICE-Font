@@ -61,6 +61,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v5
+        with:
+          # the version history: scripts/id_move_check.py compares with the last released value
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -128,6 +131,12 @@ jobs:
           PYO3_PYTHON: python3.12
           CLIPPY_CONF_DIR: .github/clippy-lib
         run: cargo clippy --lib --all-features -- -D warnings
+      # G9: FONT_SEMANTICS_ID moves only with a breaking version, the old value kept and both named in
+      # CHANGELOG.md
+      - name: Identifier moves (tests)
+        run: python3 scripts/test_id_move_check.py
+      - name: Identifier moves
+        run: python3 scripts/id_move_check.py
 
   build:
     name: Build (sdf bridge + no_std host / bare-metal)
@@ -212,11 +221,11 @@ jobs:
           PY=$(command -v python3 || command -v python)
           "$PY" scripts/test_shared_files.py
           scripts/shared_files.sh
-      # ALICE-Law G6: FONT_SEMANTICS_ID is the fold of the recorded-bit goldens and alice-det-math's
-      # identifier; this leg proves the goldens reproduce bit for bit on every OS, and run_tests.sh fails
+      # ALICE-Law G6: FONT_SEMANTICS_ID is the fold of the recorded-bit goldens and the identifier of
+      # each alice-det-math function this crate calls; this leg proves the goldens reproduce bit for bit on every OS, and run_tests.sh fails
       # if a scenario is dropped (the fold would silently shrink)
       - name: Semantics identifier reproduces (goldens + fold) and the Law stamp round-trips
-        run: scripts/run_tests.sh semantics_golden=10,font_semantics_id=8,law_stamp=8 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp
+        run: scripts/run_tests.sh semantics_golden=10,font_semantics_id=9,law_stamp=8,previous_id_artifacts=4 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp --test previous_id_artifacts
       - name: Effective rustc flags (default, full native feature set, no default features)
         if: runner.os != 'Windows'
         run: |

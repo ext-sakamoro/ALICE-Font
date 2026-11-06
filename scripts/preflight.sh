@@ -453,11 +453,15 @@ step "ci.yml / float-environment: Float environment (debug and release)"
 
 step "ci.yml / float-environment: Semantics identifier reproduces (goldens + fold) and the Law stamp round-trips"
 ( export CARGO_TERM_COLOR="always"
-  scripts/run_tests.sh semantics_golden=10,font_semantics_id=8,law_stamp=8 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp )
+  scripts/run_tests.sh semantics_golden=10,font_semantics_id=9,law_stamp=8,previous_id_artifacts=4 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp --test previous_id_artifacts )
 
 step "ci.yml / clippy: API boundary (rustdoc JSON, every item decided, G7 / G8)"
 python3 scripts/test_api_boundary.py
 python3 scripts/api_boundary.py
+
+step "ci.yml / clippy: Identifier moves (tests, then the identifier)"
+CARGO_TERM_COLOR=always python3 scripts/test_id_move_check.py
+python3 scripts/id_move_check.py
 
 # ci.yml / msrv (root crate on Rust 1.87) is runner-only: it needs the pinned toolchain, which the
 # local preflight does not switch to (same as the pyo3 job's Python pin).

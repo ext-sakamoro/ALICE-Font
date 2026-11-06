@@ -1,10 +1,17 @@
 # scripts/id_move_check.py (ALICE-Law G9): the identifiers whose value may move only with a
 # breaking version, the previous-identifier list that must keep the released value, and the
 # release tags the base is read from (its values come from the published crate).
-#
-# alice-font has no *_SEMANTICS_ID constant yet (a fresh roster joiner: the identifier and its
-# G9 machinery come in a later stack), so no [[id]] is watched here. The package and tags are
-# kept so the check is valid and ready when the first identifier is added.
 package = "alice-font"
 manifest = "Cargo.toml"
 tags = ["v{version}", "alice-font-v{version}"]
+# pyo3 needs a matching interpreter at build time and sdf only adds a bridge; no identifier is behind either
+doc-features = ["std", "ffi", "serde"]
+
+[[id]]
+path = "alice_font::semantics::FONT_SEMANTICS_ID"
+previous = "alice_font::semantics::PREVIOUS_SEMANTICS_IDS"
+# the tests that reproduce a previous identifier's bits: each must pass, and fail once the old value is
+# taken out of the list (scripts/id_move_check.py runs both)
+previous-tests = [
+    "tests/previous_id_artifacts.rs::old_stamped_forms_read_and_their_bodies_are_what_this_build_computes",
+]
