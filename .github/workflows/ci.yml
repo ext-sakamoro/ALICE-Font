@@ -91,6 +91,10 @@ jobs:
       # the lib configuration is generated from the root (clippy_lib_gate.py --check), and the
       # canary crate uses every forbidden form once: each must get a disallowed diagnostic naming
       # its path (0 forms, a clean exit, or a drifted generated file fail)
+      - name: workflow_pipefail (test, then check)
+        run: |
+          python3 scripts/test_workflow_pipefail.py
+          python3 scripts/workflow_pipefail.py
       - name: Clippy lib gate (regenerate check + canary)
         run: python3 scripts/clippy_lib_gate.py
       - name: Clippy lib gate (tests)

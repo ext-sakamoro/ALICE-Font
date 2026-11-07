@@ -441,6 +441,8 @@ relint
 ( export CARGO_TERM_COLOR="always" CLIPPY_CONF_DIR=.github/clippy-lib; cargo clippy --lib --features sdf -- -D warnings )
 
 step "ci.yml / clippy: Clippy lib gate (regenerate check + canary)"
+python3 scripts/test_workflow_pipefail.py
+python3 scripts/workflow_pipefail.py
 python3 scripts/clippy_lib_gate.py
 
 step "ci.yml / clippy: Clippy lib gate (tests)"
