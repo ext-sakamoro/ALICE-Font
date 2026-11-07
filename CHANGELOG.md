@@ -28,6 +28,7 @@ All notable changes to ALICE-Font will be documented in this file.
 - 試験 `tests/outline_raster.rs` (箱の閉じた式、手で書いた和集合の多角形への総当たり、穴、重なり、接する contour、出力の bit の digest) と `tests/outline_raster_input.rs` (非有限の入力と上限)
 
 ### Changed
+- CI: 共有の `scripts/semver_gate.py`、`scripts/test_semver_gate.py`、`scripts/release_baseline.py`、`scripts/test_release_baseline.py` の subprocess に `encoding="utf-8"` を明示した (text mode は既定で locale の符号化で読むため) ALICE-Law の pin を今の版へ移した
 
 - Semver checks workflow は手動の実行 (`workflow_dispatch`) だけにした この crate は crates.io に出さない (`publish = false`) ので、外の利用者の検査は必須の check にしない (CHANGELOG の破壊的変更と rev pin で見る)
 - ALICE-Law G2: library の float min / max / clamp を alice-det-math 経由に統一 (src/law_float.rs: law_min_f32 / law_max_f32 / law_clamp_f32 と _f64、±0 の符号を順序 -0 < +0 に固定し全 target で一致、both-NaN は canonical quiet NaN) 対象 src: game.rs (smoothstep / gradient) / outline/raster.rs (最近辺 fold・segment 投影・reach) / glyph/mod.rs (stroke 投影) / medial_axis/chain_trace.rs (bounding box) lib-clippy が f32 / f64 の min / max / clamp を禁止 (scripts/clippy_lib_gate.toml + canary) + 符号・NaN の tie test clamp は det-math の clamp 世代が未着地のため min/max 合成 (clamp 世代の着地時に再移動) G6 の 9 golden は不変なので FONT_SEMANTICS_ID は据え置き
