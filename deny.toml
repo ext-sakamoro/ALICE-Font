@@ -84,10 +84,14 @@ allow = ["LicenseRef-Proprietary"]
 name = "alice-sfnt"
 allow = ["LicenseRef-Proprietary"]
 
-# alice-zip (the Law identifier hasher): the exception is the declaration of the pinned rev
-# (LicenseRef-Proprietary); it changes in the commit that moves the pin
+# alice-zip (the Law identifier hasher) and alice-det-math (the arithmetic): both declare
+# LicenseRef-Proprietary at the main this crate takes them from
 [[licenses.exceptions]]
 name = "alice-zip"
+allow = ["LicenseRef-Proprietary"]
+
+[[licenses.exceptions]]
+name = "alice-det-math"
 allow = ["LicenseRef-Proprietary"]
 
 # ---------------------------------------------------------------------------
