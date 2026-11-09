@@ -37,12 +37,27 @@ fn the_class_table_pin_is_the_digest_of_every_code_point() {
 fn the_corpus_pin_is_the_digest_the_oracle_records() {
     // read from the oracle's source, not a copy
     let src = include_str!("layout_oracle.rs");
-    let at = src.find("the_corpus_layout_is_the_recorded_bits").unwrap();
+    let at = src
+        .find("fn the_corpus_layout_is_the_recorded_bits")
+        .unwrap();
     let rest = &src[at..];
     let q = rest.find("assert_eq!(").unwrap();
     let digest: String = rest[q..].split('"').nth(1).unwrap().to_string();
     assert_eq!(digest.len(), 64);
     assert_eq!(digest, hex(&pin("layout corpus")));
+}
+
+#[test]
+fn the_no_wrap_corpus_pin_is_the_digest_the_oracle_records() {
+    let src = include_str!("layout_oracle.rs");
+    let at = src
+        .find("fn the_no_wrap_corpus_layout_is_the_recorded_bits")
+        .unwrap();
+    let rest = &src[at..];
+    let q = rest.find("assert_eq!(").unwrap();
+    let digest: String = rest[q..].split('"').nth(1).unwrap().to_string();
+    assert_eq!(digest.len(), 64);
+    assert_eq!(digest, hex(&pin("layout corpus, no wrap")));
 }
 
 #[test]

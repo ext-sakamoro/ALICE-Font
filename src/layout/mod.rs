@@ -30,7 +30,9 @@ use core::ops::Range;
 /// `"jis class table"`, the SHA-256 over every code point (`u32` little-endian) and its
 /// [`BreakClass`] number (`u8`) for the code points whose class is not `Other`; and
 /// `"layout corpus"`, the corpus digest of `tests/layout_oracle.rs`
-/// (`the_corpus_layout_is_the_recorded_bits`). Any change to the classes or to line breaking moves one.
+/// (`the_corpus_layout_is_the_recorded_bits`); and `"layout corpus, no wrap"`, the same corpus under
+/// [`Wrap::None`] (`the_no_wrap_corpus_layout_is_the_recorded_bits`). Any change to the classes or
+/// to line breaking moves one.
 pub const LAYOUT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     (
         "jis class table",
@@ -40,6 +42,10 @@ pub const LAYOUT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
         "layout corpus",
         crate::semantics::hex32("f932be5b592c021efc7266266c814cd623c17f74f8d263b0d69ff57ff837bfee"),
     ),
+    (
+        "layout corpus, no wrap",
+        crate::semantics::hex32("156bb1b4e0ec735eda95c5816598979f513383ea49bed5b357d86158fdf0a8e8"),
+    ),
 ];
 
 /// The identifier of this layout's arithmetic: the fold of [`LAYOUT_SEMANTICS_PINS`] by the
@@ -48,7 +54,7 @@ pub const LAYOUT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 /// [`crate::semantics::FONT_SEMANTICS_ID`], so a change to line breaking does not move the glyph
 /// identifier; a reader that persists laid-out lines carries this one.
 pub const LAYOUT_SEMANTICS_ID: [u8; 32] =
-    crate::semantics::hex32("b832f7ef7acc942e36be83d8a9ef872a470f9bc56e66cf4d86fc45d84610e835");
+    crate::semantics::hex32("8f88a50060487b5280f6e144548f65b16b5a90bac4fe6d2a24bb893f855dcf2f");
 
 /// Earlier values of [`LAYOUT_SEMANTICS_ID`] whose builds lay out every pinned scenario to the same
 /// bits as this one (none yet: the identifier is new)
@@ -435,7 +441,8 @@ fn fit(
     p: &LayoutParams,
 ) -> Result<(usize, i32, Option<LineEnd>), LayoutError> {
     if p.wrap == Wrap::None {
-        todo!("STUB: Wrap::None (the oracles in tests/layout_oracle.rs come first)")
+        // a segment holds no newline, so without wrapping it is one line
+        return Ok((seg.len(), 0, None));
     }
     let mut x = 0i32; // pen after the glyphs so far (kerning between them included)
     let mut last_break: Option<usize> = None;

@@ -612,3 +612,31 @@ fn the_corpus_layout_is_the_recorded_bits() {
         "re-record only for an intended change"
     );
 }
+
+/// The bits of the same corpus without wrapping (Wrap::None, measure 7 em), overflow included:
+/// pinned beside the wrapped digest in LAYOUT_SEMANTICS_PINS ("layout corpus, no wrap").
+#[test]
+fn the_no_wrap_corpus_layout_is_the_recorded_bits() {
+    let mut h = Sha256::new();
+    let mut prm = params(7000);
+    prm.wrap = Wrap::None;
+    for text in CORPUS {
+        let p = layout(text, &whole(text), &set(), &prm).unwrap();
+        for g in &p.glyphs {
+            h.update(u32::from(g.ch).to_le_bytes());
+            h.update(g.x.to_le_bytes());
+            h.update(g.advance.to_le_bytes());
+        }
+        for l in &p.lines {
+            for v in [l.width, l.hang, l.overflow, l.baseline] {
+                h.update(v.to_le_bytes());
+            }
+            h.update([l.end as u8]);
+        }
+    }
+    let got: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    assert_eq!(
+        got, "156bb1b4e0ec735eda95c5816598979f513383ea49bed5b357d86158fdf0a8e8",
+        "re-record only for an intended change"
+    );
+}
