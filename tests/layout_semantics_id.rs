@@ -1,5 +1,7 @@
 //! LAYOUT_SEMANTICS_ID: each pin recomputed from its source, then the fold.
-use alice_font::layout::{jis, BreakClass, LAYOUT_SEMANTICS_ID, LAYOUT_SEMANTICS_PINS};
+use alice_font::layout::{
+    jis, BreakClass, LAYOUT_PREVIOUS_SEMANTICS_IDS, LAYOUT_SEMANTICS_ID, LAYOUT_SEMANTICS_PINS,
+};
 use sha2::{Digest, Sha256};
 
 fn hex(b: &[u8]) -> String {
@@ -75,4 +77,29 @@ fn the_identifier_is_the_fold_of_the_pins() {
         LAYOUT_SEMANTICS_ID,
         alice_font::semantics::FONT_SEMANTICS_ID
     );
+}
+
+// b832f7ef folded the class table and the wrapped corpus only: its fold over the current values of
+// those two pins must be b832f7ef, so the scenarios it pinned give the same bits in this build
+#[test]
+fn the_previous_identifier_is_the_fold_of_the_pins_it_had() {
+    let mut e: Vec<_> = LAYOUT_SEMANTICS_PINS
+        .iter()
+        .filter(|(n, _)| *n == "jis class table" || *n == "layout corpus")
+        .copied()
+        .collect();
+    assert_eq!(e.len(), 2);
+    e.sort_by(|a, b| a.0.as_bytes().cmp(b.0.as_bytes()));
+    let mut h = Sha256::new();
+    for (name, d) in &e {
+        h.update((name.len() as u32).to_be_bytes());
+        h.update(name.as_bytes());
+        h.update(d);
+    }
+    let got = hex(&h.finalize());
+    assert_eq!(
+        got,
+        "b832f7ef7acc942e36be83d8a9ef872a470f9bc56e66cf4d86fc45d84610e835"
+    );
+    assert!(LAYOUT_PREVIOUS_SEMANTICS_IDS.iter().any(|p| hex(p) == got));
 }

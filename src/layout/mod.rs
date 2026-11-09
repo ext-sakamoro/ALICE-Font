@@ -56,9 +56,12 @@ pub const LAYOUT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 pub const LAYOUT_SEMANTICS_ID: [u8; 32] =
     crate::semantics::hex32("8f88a50060487b5280f6e144548f65b16b5a90bac4fe6d2a24bb893f855dcf2f");
 
-/// Earlier values of [`LAYOUT_SEMANTICS_ID`] whose builds lay out every pinned scenario to the same
-/// bits as this one (none yet: the identifier is new)
-pub const LAYOUT_PREVIOUS_SEMANTICS_IDS: &[[u8; 32]] = &[];
+/// Earlier values of [`LAYOUT_SEMANTICS_ID`] whose builds lay out every scenario they pinned to the
+/// same bits as this one. `b832f7ef…` pinned the class table and the wrapped corpus (both unchanged
+/// here); it had no `Wrap::None`, which only adds a pin.
+pub const LAYOUT_PREVIOUS_SEMANTICS_IDS: &[[u8; 32]] = &[crate::semantics::hex32(
+    "b832f7ef7acc942e36be83d8a9ef872a470f9bc56e66cf4d86fc45d84610e835",
+)];
 
 /// The pen advances of one font at one style, in its own font units.
 pub trait GlyphMetrics {
