@@ -85,10 +85,18 @@ jobs:
         run: |
           set -euo pipefail
           url=https://github.com/bytecodealliance/wasmtime/releases/download/v49.0.2/wasmtime-v49.0.2-aarch64-linux.tar.xz
-          curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors -o "$RUNNER_TEMP/wasmtime.tar.xz" "$url"
-          echo "ca14988c6da3d92512bd9c3bad6cbd06b1f5743b6911a9e709f1a6fa30637d7f  $RUNNER_TEMP/wasmtime.tar.xz" | sha256sum -c -
           mkdir -p ~/.wasmtime-v49.0.2
-          tar -xJf "$RUNNER_TEMP/wasmtime.tar.xz" -C ~/.wasmtime-v49.0.2 --strip-components=1
+          # first source: the release tarball, checked against its recorded SHA-256
+          if curl -fsSL --retry 8 --retry-delay 15 --retry-all-errors -o "$RUNNER_TEMP/wasmtime.tar.xz" "$url"; then
+            echo "ca14988c6da3d92512bd9c3bad6cbd06b1f5743b6911a9e709f1a6fa30637d7f  $RUNNER_TEMP/wasmtime.tar.xz" | sha256sum -c -
+            tar -xJf "$RUNNER_TEMP/wasmtime.tar.xz" -C ~/.wasmtime-v49.0.2 --strip-components=1
+          else
+            # second source when the release host keeps failing: the same version from crates.io,
+            # with the crate's own lock file (cargo checks every downloaded crate's checksum)
+            echo "release download failed; building wasmtime-cli 49.0.2 from crates.io"
+            cargo install wasmtime-cli --version 49.0.2 --locked --root "$RUNNER_TEMP/wasmtime-cli"
+            cp "$RUNNER_TEMP/wasmtime-cli/bin/wasmtime" ~/.wasmtime-v49.0.2/wasmtime
+          fi
       - name: Check wasmtime runs
         run: |
           echo "$HOME/.wasmtime-v49.0.2" >> "$GITHUB_PATH"
