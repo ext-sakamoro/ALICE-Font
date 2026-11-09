@@ -64,8 +64,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-wasip1
+      # rust-toolchain.toml pins the toolchain the build uses; the target goes to that one
+      - name: Ensure wasm32-wasip1 rust-std is installed (pinned toolchain)
+        run: rustup target add wasm32-wasip1
       - uses: Swatinem/rust-cache@v2
         if: runner.environment == 'github-hosted'
         with:

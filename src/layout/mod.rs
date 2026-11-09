@@ -50,6 +50,10 @@ pub const LAYOUT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 pub const LAYOUT_SEMANTICS_ID: [u8; 32] =
     crate::semantics::hex32("b832f7ef7acc942e36be83d8a9ef872a470f9bc56e66cf4d86fc45d84610e835");
 
+/// Earlier values of [`LAYOUT_SEMANTICS_ID`] whose builds lay out every pinned scenario to the same
+/// bits as this one (none yet: the identifier is new)
+pub const LAYOUT_PREVIOUS_SEMANTICS_IDS: &[[u8; 32]] = &[];
+
 /// The pen advances of one font at one style, in its own font units.
 pub trait GlyphMetrics {
     /// Font units per em

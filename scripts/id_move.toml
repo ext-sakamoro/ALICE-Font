@@ -15,3 +15,9 @@ previous = "alice_font::semantics::PREVIOUS_SEMANTICS_IDS"
 previous-tests = [
     "tests/previous_id_artifacts.rs::old_stamped_forms_read_and_their_bodies_are_what_this_build_computes",
 ]
+
+[[id]]
+# the paragraph layout's identifier (src/layout): separate from FONT_SEMANTICS_ID, so a change to line
+# breaking moves this one only
+path = "alice_font::layout::LAYOUT_SEMANTICS_ID"
+previous = "alice_font::layout::LAYOUT_PREVIOUS_SEMANTICS_IDS"
