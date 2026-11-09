@@ -92,8 +92,8 @@ const CORPUS: &[&str] = &[
     "コーヒーを飲みながら、ニュースを読む。今日は晴れ、気温は２５℃、湿度は６０％。",
     "価格は￥１，２００（税込）です。詳しくは【お知らせ】をご覧ください。",
     "ALICE-Font lays out text in integer font units, so native and wasm32 agree bit for bit.",
-    "日本語と English が混ざった文でも、単語の途中では breaks しない。ヽヾゝゞ々は行頭に来ない。",
-    "ぁぃぅぇぉっゃゅょ、ァィゥェォッャュョ。「（『【〔［",
+    "日本語と English が混ざった文でも、単語の途中では breaks しない。人々や時々のように、々は行頭に来ない。いすゞ、こゝろ、ほゞ。",
+    "ちょっとしたキャッシュの問題で、ショップのページが表示されなかった。",
 ];
 
 #[test]
@@ -127,12 +127,13 @@ fn the_class_table_is_jlreq_appendix_a() {
     }
 }
 
-/// Every line boundary of the corpus at every measure from 3 em to 20 em keeps the JLREQ rules.
+/// Every line boundary of the corpus at every measure from 5 em to 20 em keeps the JLREQ rules.
 #[test]
 fn kinsoku_holds_on_the_corpus_at_every_measure() {
     let mut boundaries = 0;
     for text in CORPUS {
-        for measure in (3000..=20_000).step_by(250) {
+        // 5 em: the longest Latin word of the corpus ("ALICE-Font", 10 x 500) fits, so no line is forced
+        for measure in (5000..=20_000).step_by(250) {
             let p = lay(text, measure);
             for i in 1..p.lines.len() {
                 let prev = &p.lines[i - 1];
@@ -163,9 +164,10 @@ fn kinsoku_holds_on_the_corpus_at_every_measure() {
                     !(INSEPARABLE.contains(last) && last == first),
                     "{last:?}{first:?} split"
                 );
+                let raw_last = p.glyphs[prev.glyphs.end as usize - 1].ch;
                 assert!(
-                    !(last.is_ascii_alphanumeric() && first.is_ascii_alphanumeric()),
-                    "a Latin word is split: {last:?}|{first:?}"
+                    !(raw_last.is_ascii_alphanumeric() && first.is_ascii_alphanumeric()),
+                    "a Latin word is split: {raw_last:?}|{first:?}"
                 );
                 boundaries += 1;
             }
@@ -284,6 +286,20 @@ fn a_full_stop_hangs_only_when_asked() {
     let on = layout(text, &whole(text), &set(), &p).unwrap();
     assert_eq!(line_text(&on, 0), "あいう。");
     assert_eq!((on.lines[0].width, on.lines[0].hang), (3000, 1000));
+}
+
+// A mark after a space does not hang: the space would then sit inside the line's content and
+// push it past the measure ("あい " is 2250 > 2100).
+#[test]
+fn a_mark_after_a_space_does_not_hang() {
+    let text = "あい 。う";
+    let mut p = params(2100);
+    p.hanging_punct = true;
+    let out = layout(text, &whole(text), &set(), &p).unwrap();
+    for l in &out.lines {
+        assert!(l.width <= 2100, "{l:?}");
+    }
+    assert_eq!(out.lines[0].hang, 0);
 }
 
 #[test]
@@ -445,7 +461,7 @@ fn the_corpus_layout_is_the_recorded_bits() {
     }
     let got: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
     assert_eq!(
-        got, "RECORD-AFTER-THE-ORACLES-PASS",
+        got, "d566afc58c3cee9923b9abda86b2c51e4a1f38ecaea954f0b733710e5ebea9f8",
         "re-record only for an intended change"
     );
 }

@@ -84,6 +84,7 @@ and the union is returned as a `GlyphSdf`.
 | [`glyph`] | SDF glyph procedural generation — ASCII, Hiragana, Katakana, CJK stroke primitives |
 | [`cjk`] | IDS parser, radical library, composition layout, IDS DB |
 | [`atlas`] | Runtime GPU-friendly SDF tile cache (derived from procedural output; not a shipped asset) |
+| [`layout`] | Paragraph layout in integer font units — line breaking with JIS X 4051 kinsoku (strict / loose, hanging full stops and commas), Latin word breaks, style spans, advances from a `GlyphMetrics` (a bezier font's `hmtx`, or the procedural glyphs rounded once); the same bits natively and on wasm32 |
 | [`shaper`] | Text shaper — kerning, horizontal advance, line layout |
 | [`game`] | `TextEffect` — canonical spec for outline / shadow / glow / gradient / dissolve / … |
 | [`outline`] | `OutlineGlyph` polygon contours — shader packing, and `rasterize` → `Result<GlyphSdf, RasterizeError>` (exact signed distance to the non-zero-winding region, tile `TILE_EM_*`; refuses non-finite input and outlines over `RASTER_MAX_*`) |

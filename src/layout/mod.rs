@@ -166,8 +166,301 @@ pub fn layout(
     metrics: &dyn MetricsSet,
     params: &LayoutParams,
 ) -> Result<Paragraph, LayoutError> {
-    let _ = (text, spans, metrics, params);
-    todo!("STUB: paragraph layout (the oracles in tests/layout_oracle.rs come first)")
+    if params.measure <= 0 || params.line_height <= 0 {
+        return Err(LayoutError::BadParams(
+            "measure and line_height must be > 0",
+        ));
+    }
+    if params.ascent < 0 || params.ascent > params.line_height {
+        return Err(LayoutError::BadParams(
+            "ascent must be within 0..=line_height",
+        ));
+    }
+    let len = u32::try_from(text.len()).map_err(|_| LayoutError::BadParams("text over 4 GiB"))?;
+    let upm = check_spans(text, len, spans, metrics)?;
+    let chars = shape(text, spans, metrics)?;
+
+    let mut glyphs: Vec<PlacedGlyph> = Vec::with_capacity(chars.len());
+    let mut lines: Vec<Line> = Vec::new();
+    // each segment between newlines is broken on its own; a newline ends a line (Hard)
+    let mut seg_start = 0usize;
+    while seg_start < chars.len() {
+        let mut seg_end = seg_start;
+        while seg_end < chars.len() && chars[seg_end].ch != '\n' {
+            seg_end += 1;
+        }
+        let hard = seg_end < chars.len();
+        let at = chars.get(seg_start).map_or(len, |c| c.src);
+        break_segment(
+            &chars[seg_start..seg_end],
+            at,
+            hard,
+            params,
+            &mut glyphs,
+            &mut lines,
+        )?;
+        seg_start = seg_end + 1;
+        if hard && seg_start == chars.len() {
+            // a text that ends in a newline ends with an empty line
+            let at = chars[seg_end].src + 1;
+            push_line(
+                &mut lines,
+                &glyphs,
+                glyphs.len(),
+                at..at,
+                0,
+                0,
+                LineEnd::End,
+                params,
+            );
+        }
+    }
+    let n = i32::try_from(lines.len()).map_err(|_| LayoutError::BadParams("too many lines"))?;
+    Ok(Paragraph {
+        glyphs,
+        lines,
+        height: n * params.line_height,
+        units_per_em: upm,
+    })
+}
+
+/// One character of the text with its style and its advance (kerning with the next character
+/// of the same style included; a line end drops it again).
+struct Shaped {
+    ch: char,
+    src: u32,
+    style: StyleId,
+    advance: i32,
+    kern: i32,
+}
+
+fn check_spans(
+    text: &str,
+    len: u32,
+    spans: &[StyleSpan],
+    metrics: &dyn MetricsSet,
+) -> Result<u16, LayoutError> {
+    let bad = LayoutError::BadParams;
+    if text.is_empty() {
+        return if spans.is_empty() {
+            Ok(0)
+        } else {
+            Err(bad("spans on an empty text"))
+        };
+    }
+    let mut at = 0u32;
+    let mut upm = None;
+    for s in spans {
+        if s.src.start != at {
+            return Err(bad(
+                "spans must cover the text in order, with no gap or overlap",
+            ));
+        }
+        if s.src.end <= s.src.start || s.src.end > len {
+            return Err(bad("a span is empty or runs past the end of the text"));
+        }
+        if !text.is_char_boundary(s.src.end as usize) {
+            return Err(bad("a span ends off a character boundary"));
+        }
+        let m = metrics
+            .get(s.style)
+            .ok_or(bad("a span names a style the metrics set lacks"))?;
+        if *upm.get_or_insert(m.units_per_em()) != m.units_per_em() {
+            return Err(bad("the styles of a paragraph must share units_per_em"));
+        }
+        at = s.src.end;
+    }
+    if at != len {
+        return Err(bad("the spans do not reach the end of the text"));
+    }
+    upm.ok_or(bad("no span"))
+}
+
+fn shape(
+    text: &str,
+    spans: &[StyleSpan],
+    metrics: &dyn MetricsSet,
+) -> Result<Vec<Shaped>, LayoutError> {
+    let mut out: Vec<Shaped> = Vec::new();
+    let mut span = 0usize;
+    for (i, ch) in text.char_indices() {
+        // check_spans bounded the text by u32
+        #[allow(clippy::cast_possible_truncation)]
+        let src = i as u32;
+        while spans[span].src.end <= src {
+            span += 1;
+        }
+        let style = spans[span].style;
+        let advance = if ch == '\n' {
+            0
+        } else {
+            let m = metrics
+                .get(style)
+                .ok_or(LayoutError::BadParams("unknown style"))?;
+            m.advance(ch).ok_or(LayoutError::UnknownGlyph { ch, src })?
+        };
+        if let Some(prev) = out.last_mut() {
+            if prev.style == style && prev.ch != '\n' && ch != '\n' {
+                let m = metrics
+                    .get(style)
+                    .ok_or(LayoutError::BadParams("unknown style"))?;
+                prev.kern = m.kern(prev.ch, ch);
+            }
+        }
+        out.push(Shaped {
+            ch,
+            src,
+            style,
+            advance,
+            kern: 0,
+        });
+    }
+    Ok(out)
+}
+
+/// Breaks one segment (no newline inside) into lines, appending its glyphs and lines.
+fn break_segment(
+    seg: &[Shaped],
+    at: u32,
+    hard: bool,
+    p: &LayoutParams,
+    glyphs: &mut Vec<PlacedGlyph>,
+    lines: &mut Vec<Line>,
+) -> Result<(), LayoutError> {
+    if seg.is_empty() {
+        // an empty segment before a newline is an empty line
+        // (`at` is the newline's offset)
+        if hard {
+            push_line(lines, glyphs, glyphs.len(), at..at, 0, 0, LineEnd::Hard, p);
+        }
+        return Ok(());
+    }
+    let mut start = 0usize;
+    while start < seg.len() {
+        let (end, hang, why) = fit(seg, start, p)?;
+        let first = glyphs.len();
+        let mut x = 0i32;
+        for (k, s) in seg[start..end].iter().enumerate() {
+            // the last glyph of a line has no kerning with the next line's first glyph
+            let advance = if start + k + 1 == end {
+                s.advance
+            } else {
+                s.advance + s.kern
+            };
+            glyphs.push(PlacedGlyph {
+                ch: s.ch,
+                src: s.src,
+                style: s.style,
+                x,
+                advance,
+            });
+            x += advance;
+        }
+        let trailing: i32 = glyphs[first..]
+            .iter()
+            .rev()
+            .take_while(|g| g.ch == ' ')
+            .map(|g| g.advance)
+            .sum();
+        let last = &seg[end - 1];
+        let src = seg[start].src..last.src + last.ch.len_utf8() as u32;
+        let end_kind = match (why, end == seg.len()) {
+            (Some(w), _) => w,
+            (None, true) if hard => LineEnd::Hard,
+            (None, _) => LineEnd::End,
+        };
+        push_line(
+            lines,
+            glyphs,
+            first,
+            src,
+            x - trailing - hang,
+            hang,
+            end_kind,
+            p,
+        );
+        start = end;
+    }
+    Ok(())
+}
+
+/// The end of the line that starts at `start`: (one past its last glyph, the hung mark's width,
+/// `Some(Soft | Forced)` when it breaks before the end of the segment).
+fn fit(
+    seg: &[Shaped],
+    start: usize,
+    p: &LayoutParams,
+) -> Result<(usize, i32, Option<LineEnd>), LayoutError> {
+    let mut x = 0i32; // pen after the glyphs so far (kerning between them included)
+    let mut last_break: Option<usize> = None;
+    for i in start..seg.len() {
+        let s = &seg[i];
+        if i > start && jis::break_allowed(seg[i - 1].ch, s.ch, p.kinsoku) {
+            last_break = Some(i);
+        }
+        if s.ch == ' ' {
+            // a space never overflows: at the end of a line it takes no width
+            x += s.advance + s.kern;
+            continue;
+        }
+        let content = x + s.advance; // this glyph ends the content; its kerning is not counted
+        if content > p.measure {
+            let mark = matches!(jis::class(s.ch), BreakClass::FullStop | BreakClass::Comma);
+            let next_ok = i + 1 == seg.len() || jis::break_allowed(s.ch, seg[i + 1].ch, p.kinsoku);
+            if p.hanging_punct
+                && mark
+                && i > start
+                // the line's content is then everything before the mark (spaces included)
+                && x <= p.measure
+                && next_ok
+            {
+                let why = if i + 1 == seg.len() {
+                    None
+                } else {
+                    Some(LineEnd::Soft)
+                };
+                return Ok((i + 1, s.advance, why));
+            }
+            if let Some(b) = last_break {
+                return Ok((b, 0, Some(LineEnd::Soft)));
+            }
+            if i == start {
+                return Err(LayoutError::MeasureTooSmall {
+                    needed: s.advance,
+                    src: s.src,
+                });
+            }
+            return Ok((i, 0, Some(LineEnd::Forced)));
+        }
+        x += s.advance + s.kern;
+    }
+    Ok((seg.len(), 0, None))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn push_line(
+    lines: &mut Vec<Line>,
+    glyphs: &[PlacedGlyph],
+    first: usize,
+    src: Range<u32>,
+    width: i32,
+    hang: i32,
+    end: LineEnd,
+    p: &LayoutParams,
+) {
+    // glyph and line counts stay far below 2^31 for any text under 4 GiB of glyphs we lay out
+    #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+    let index = lines.len() as i32;
+    #[allow(clippy::cast_possible_truncation)]
+    let range = first as u32..glyphs.len() as u32;
+    lines.push(Line {
+        glyphs: range,
+        src,
+        width,
+        hang,
+        baseline: index * p.line_height + p.ascent,
+        end,
+    });
 }
 
 /// The procedural glyphs of this crate as [`GlyphMetrics`]: the em advance of each glyph's

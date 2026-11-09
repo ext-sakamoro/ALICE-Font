@@ -82,6 +82,7 @@ CJK では同じ呼び出しが `cjk::ids_db` + `cjk::radicals` +
 | [`glyph`] | SDF glyph 手続き的生成 — ASCII, Hiragana, Katakana, CJK stroke primitive |
 | [`cjk`] | IDS parser, radical library, 合成 layout, IDS DB |
 | [`atlas`] | runtime の GPU 対応 SDF tile cache (手続き的出力の派生、配布 asset ではない) |
+| [`layout`] | 段落の組版を整数の font units で — JIS X 4051 の禁則 (strict / loose、句読点のぶら下げ)、欧文の単語の区切り、style の範囲、字送りは `GlyphMetrics` から (bezier の書体は `hmtx`、手続きの字は 1 度だけ丸める) native と wasm32 で同じ bits |
 | [`shaper`] | text shaper — kerning, horizontal advance, line layout |
 | [`game`] | `TextEffect` — outline / shadow / glow / gradient / dissolve / … の canonical spec |
 | [`license`] | font-license tracking (per-title, platform, seat-limit、32-byte wire format) |
