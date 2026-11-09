@@ -100,8 +100,8 @@ const CORPUS: &[&str] = &[
 fn the_class_table_is_jlreq_appendix_a() {
     use BreakClass as C;
     for (chars, c) in [
-        ("「『（【〔［｛〈《", C::OpeningBracket),
-        ("」』）】〕］｝〉》", C::ClosingBracket),
+        ("「『（【〔［｛〈《‘“", C::OpeningBracket),
+        ("」』）】〕］｝〉》’”", C::ClosingBracket),
         ("‐〜゠–", C::Hyphen),
         ("？！‼⁇", C::DividingPunctuation),
         ("・：；", C::MiddleDot),
@@ -110,7 +110,10 @@ fn the_class_table_is_jlreq_appendix_a() {
         ("—…‥", C::Inseparable),
         ("ヽヾゝゞ々〻", C::IterationMark),
         ("ー", C::ProlongedSoundMark),
-        ("ぁっゃァッャヵヶㇰ", C::SmallKana),
+        (
+            "ぁっゃァッャヵヶㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ",
+            C::SmallKana,
+        ),
         ("￥＄￡＃€№", C::PrefixedAbbreviation),
         ("°′″℃％‰", C::PostfixedAbbreviation),
         ("\u{3000}", C::IdeographicSpace),
@@ -312,6 +315,69 @@ fn latin_breaks_after_spaces_and_trailing_spaces_take_no_width() {
     let hard = lay("ab\ncd", 9000);
     assert_eq!((hard.lines.len(), hard.lines[0].end), (2, LineEnd::Hard));
     assert_eq!(hard.lines[1].src, 3..5);
+}
+
+// A typographic quote inside a Latin word (don’t, it’s, ‘quoted’) joins it: no break on either side
+// of it between Western characters. At 3 em, "don’t" (5 x 500 = 2500) fits on the second line.
+#[test]
+fn a_quote_inside_a_latin_word_does_not_split_it() {
+    for text in [
+        "I don’t know",
+        "it’s fine",
+        "say ‘yes’ now",
+        "a “b” c",
+        "we can’t and won’t, they’ll say we’re late",
+        "Alice’s and James’ books",
+        "the 1990’s and o’clock",
+        "rock ’n’ roll isn’t dead",
+        "shouldn’t’ve",
+    ] {
+        for measure in (1500..=6000).step_by(250) {
+            let Ok(p) = layout(text, &whole(text), &set(), &params(measure)) else {
+                continue;
+            };
+            for i in 1..p.lines.len() {
+                if p.lines[i - 1].end != LineEnd::Soft {
+                    continue;
+                }
+                let a = p.glyphs[p.lines[i - 1].glyphs.end as usize - 1].ch;
+                let b = p.glyphs[p.lines[i].glyphs.start as usize].ch;
+                let latin = |c: char| c.is_ascii_alphanumeric();
+                let quote = |c: char| "‘’“”".contains(c);
+                assert!(
+                    !((latin(a) && quote(b)) || (quote(a) && latin(b))),
+                    "{text:?} at {measure} breaks {a:?}|{b:?}"
+                );
+            }
+        }
+    }
+}
+
+// oracle: UAX #14 classes IS (. , : ;) and EX (! ?) take no break before them, so Latin full
+// stops and the like never start a line, after a Latin or a Japanese character alike
+#[test]
+fn latin_punctuation_never_starts_a_line() {
+    for text in [
+        "日本語.英語",
+        "漢字,かな",
+        "本当!です",
+        "何?何",
+        "時:分",
+        "ab;cd",
+    ] {
+        for measure in (1000..=4000).step_by(250) {
+            let Ok(p) = layout(text, &whole(text), &set(), &params(measure)) else {
+                continue;
+            };
+            for l in &p.lines[1..] {
+                let first = p.glyphs[l.glyphs.start as usize].ch;
+                assert!(
+                    !".,:;!?".contains(first),
+                    "{text:?} at {measure}: line starts with {first:?}"
+                );
+            }
+        }
+    }
 }
 
 #[test]
