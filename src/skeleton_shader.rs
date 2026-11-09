@@ -74,6 +74,20 @@ pub const MULTI_SKELETON_METAS_AREA_SIZE: usize = MULTI_SKELETON_MAX_GLYPHS * 16
 pub const MULTI_SKELETON_UBO_SIZE: usize =
     MULTI_SKELETON_STROKES_AREA_SIZE + MULTI_SKELETON_METAS_AREA_SIZE + 16;
 
+/// The vertex shader (GLSL ES 3.00, WebGL2) that reads [`MultiSkeletonGlyphPayload::to_std140_ubo_chunks`]:
+/// one instance per glyph, the text's em box fitted into the canvas with its aspect kept
+///
+/// Uniforms: the `MultiSkeletonBlock` block, `uCanvasSize` (pixels) and `uYPadding` (em above and
+/// below the baseline box); attribute `aQuadPos` (the unit quad, -1..1)
+pub const MULTI_SKELETON_VERT_GLSL: &str =
+    include_str!("../shaders/analytical_multi_skeleton.vert.glsl");
+
+/// The fragment shader (GLSL ES 3.00, WebGL2) paired with [`MULTI_SKELETON_VERT_GLSL`]: the distance
+/// to each stroke's cubic (sampled), the pen width interpolated along the stroke, and
+/// `1 - smoothstep(pen - aa, pen + aa, d)` for the coverage that mixes `uBgColor` to `uFgColor`
+pub const MULTI_SKELETON_FRAG_GLSL: &str =
+    include_str!("../shaders/analytical_multi_skeleton.frag.glsl");
+
 /// 1 glyph の pack 済 skeleton (chunk 化前の中間表現)。
 #[derive(Debug, Clone, Copy)]
 pub struct SkeletonGlyph {
@@ -392,5 +406,24 @@ mod tests {
         // Stroke 0's width vec4 at offset 32 (skip 2 vec4 = 32B for positions)
         assert_eq!(&chunk[32..36], &0.03f32.to_le_bytes()); // width_start
         assert_eq!(&chunk[36..40], &0.08f32.to_le_bytes()); // width_end
+    }
+
+    #[test]
+    fn shipped_shader_text_matches_the_ubo_layout() {
+        for src in [MULTI_SKELETON_VERT_GLSL, MULTI_SKELETON_FRAG_GLSL] {
+            assert!(src.starts_with("#version 300 es"));
+            assert!(src.contains("layout(std140) uniform MultiSkeletonBlock"));
+            assert!(src.contains(&alloc::format!(
+                "const int MAX_GLYPHS = {MULTI_SKELETON_MAX_GLYPHS};"
+            )));
+            assert!(src.contains(&alloc::format!(
+                "const int MAX_STROKES_PER_GLYPH = {MULTI_SKELETON_MAX_STROKES_PER_GLYPH};"
+            )));
+            assert!(src.contains(&alloc::format!(
+                "const int VEC4_PER_STROKE = {VEC4_PER_STROKE};"
+            )));
+        }
+        assert!(MULTI_SKELETON_VERT_GLSL.contains("gl_InstanceID"));
+        assert!(MULTI_SKELETON_FRAG_GLSL.contains("smoothstep(penW - aa, penW + aa, d)"));
     }
 }
