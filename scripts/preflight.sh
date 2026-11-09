@@ -250,7 +250,7 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing tool: $1 ($2)" >&2; 
 has_toolchain() { grep -q "^$1" <<<"$(rustup toolchain list)"; }
 
 # Steps CI runs that this file cannot reproduce locally (they can only fail remotely):
-#   - ci.yml:layout-wasm: uses bytecodealliance/actions/wasmtime/setup@v1 (an action this file cannot run)
+#   - ci.yml:layout-wasm: uses actions/cache@v6 (an action this file cannot run); Install wasmtime / Check wasmtime runs fetch the linux aarch64 tarball into $RUNNER_TEMP (runner-only, here wasmtime comes from PATH)
 #   - ci.yml:pyo3: uses actions/setup-python@v6 (an action this file cannot run)
 #   - ci.yml:pyo3:Clippy (all features, all targets) (needs network / runner-only)
 #   - security-audit.yml:changes:decide (reads AFTER, BEFORE, CREATED, EVENT, FORCED, PR_BASE, PR_HEAD, a value only the runner has)
