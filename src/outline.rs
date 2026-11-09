@@ -317,6 +317,20 @@ pub const MULTI_OUTLINE_UBO_SIZE: usize = MULTI_OUTLINE_POINTS_AREA_SIZE
     + MULTI_OUTLINE_METAS_AREA_SIZE
     + 16;
 
+/// The vertex shader (GLSL ES 3.00, WebGL2) that reads [`MultiOutlineGlyphPayload::to_std140_ubo_chunks`]:
+/// one instance per glyph, the text's em box fitted into the canvas with its aspect kept
+///
+/// Uniforms: the `MultiOutlineBlock` block, `uCanvasSize` (pixels) and `uYPadding` (em above and
+/// below the baseline box); attribute `aQuadPos` (the unit quad, -1..1)
+pub const MULTI_OUTLINE_VERT_GLSL: &str =
+    include_str!("../shaders/analytical_multi_outline.vert.glsl");
+
+/// The fragment shader (GLSL ES 3.00, WebGL2) paired with [`MULTI_OUTLINE_VERT_GLSL`]: the nonzero
+/// winding of the glyph's contours for inside, the nearest segment for the distance, and
+/// `1 - smoothstep(-uAntiAlias, uAntiAlias, d)` for the coverage that mixes `uBgColor` to `uFgColor`
+pub const MULTI_OUTLINE_FRAG_GLSL: &str =
+    include_str!("../shaders/analytical_multi_outline.frag.glsl");
+
 /// 単一 glyph の text layout 内配置情報 (em 座標)。
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
@@ -794,5 +808,24 @@ mod tests {
         assert_eq!(tm, 13_376);
         assert_eq!(&chunk[tm..tm + 4], &3.0f32.to_le_bytes()); // total_advance
         assert_eq!(&chunk[tm + 4..tm + 8], &3.0f32.to_le_bytes()); // chunk_glyph_count
+    }
+
+    #[test]
+    fn shipped_shader_text_matches_the_ubo_layout() {
+        for src in [MULTI_OUTLINE_VERT_GLSL, MULTI_OUTLINE_FRAG_GLSL] {
+            assert!(src.starts_with("#version 300 es"));
+            assert!(src.contains("layout(std140) uniform MultiOutlineBlock"));
+            assert!(src.contains(&alloc::format!(
+                "const int MAX_GLYPHS = {MULTI_OUTLINE_MAX_GLYPHS};"
+            )));
+            assert!(src.contains(&alloc::format!(
+                "const int MAX_POINTS_PER_GLYPH = {MULTI_OUTLINE_MAX_POINTS_PER_GLYPH};"
+            )));
+            assert!(src.contains(&alloc::format!(
+                "const int MAX_CONTOURS_PER_GLYPH = {MULTI_OUTLINE_MAX_CONTOURS_PER_GLYPH};"
+            )));
+        }
+        assert!(MULTI_OUTLINE_VERT_GLSL.contains("gl_InstanceID"));
+        assert!(MULTI_OUTLINE_FRAG_GLSL.contains("smoothstep(-uAntiAlias, uAntiAlias, sd)"));
     }
 }
