@@ -38,7 +38,7 @@ pub const LAYOUT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
     ),
     (
         "layout corpus",
-        crate::semantics::hex32("d566afc58c3cee9923b9abda86b2c51e4a1f38ecaea954f0b733710e5ebea9f8"),
+        crate::semantics::hex32("f932be5b592c021efc7266266c814cd623c17f74f8d263b0d69ff57ff837bfee"),
     ),
 ];
 
@@ -48,7 +48,7 @@ pub const LAYOUT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
 /// [`crate::semantics::FONT_SEMANTICS_ID`], so a change to line breaking does not move the glyph
 /// identifier; a reader that persists laid-out lines carries this one.
 pub const LAYOUT_SEMANTICS_ID: [u8; 32] =
-    crate::semantics::hex32("9326edfe0589e549d0704e0fdb97b436637db8ba1ede2f1c7cd94e560aaabff5");
+    crate::semantics::hex32("b832f7ef7acc942e36be83d8a9ef872a470f9bc56e66cf4d86fc45d84610e835");
 
 /// The pen advances of one font at one style, in its own font units.
 pub trait GlyphMetrics {

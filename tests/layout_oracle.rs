@@ -94,6 +94,7 @@ const CORPUS: &[&str] = &[
     "ALICE-Font lays out text in integer font units, so native and wasm32 agree bit for bit.",
     "日本語と English が混ざった文でも、単語の途中では breaks しない。人々や時々のように、々は行頭に来ない。いすゞ、こゝろ、ほゞ。",
     "ちょっとしたキャッシュの問題で、ショップのページが表示されなかった。",
+    "I don’t think it’s Alice’s; we’re told 日本語.英語!と書く人もいる、rock ’n’ roll isn’t dead.",
 ];
 
 #[test]
@@ -369,8 +370,12 @@ fn latin_punctuation_never_starts_a_line() {
             let Ok(p) = layout(text, &whole(text), &set(), &params(measure)) else {
                 continue;
             };
-            for l in &p.lines[1..] {
-                let first = p.glyphs[l.glyphs.start as usize].ch;
+            // a Forced line end (nothing fits) breaks without the rules; the others are checked
+            for w in p.lines.windows(2) {
+                if w[0].end != LineEnd::Soft {
+                    continue;
+                }
+                let first = p.glyphs[w[1].glyphs.start as usize].ch;
                 assert!(
                     !".,:;!?".contains(first),
                     "{text:?} at {measure}: line starts with {first:?}"
@@ -527,7 +532,7 @@ fn the_corpus_layout_is_the_recorded_bits() {
     }
     let got: String = h.finalize().iter().map(|b| format!("{b:02x}")).collect();
     assert_eq!(
-        got, "d566afc58c3cee9923b9abda86b2c51e4a1f38ecaea954f0b733710e5ebea9f8",
+        got, "f932be5b592c021efc7266266c814cd623c17f74f8d263b0d69ff57ff837bfee",
         "re-record only for an intended change"
     );
 }

@@ -525,7 +525,6 @@ step "ci.yml / layout-wasm: Layout oracles and corpus digest via wasmtime"
 (
   gh_step ci.yml.layout-wasm
 grep -q '^wasm32-wasip1$' <<<"$(rustup target list --installed)" || rustup target add wasm32-wasip1
-grep -q '^wasm32-wasip1$' <<<"$(rustup target list --installed)" || rustup target add wasm32-wasip1
 (
   export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde" CARGO_TARGET_WASM32_WASIP1_RUNNER="wasmtime"
   set -euo pipefail

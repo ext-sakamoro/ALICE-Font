@@ -151,6 +151,17 @@ pub fn break_allowed(a: char, b: char, k: Kinsoku) -> bool {
     if ca == BreakClass::Inseparable && a == b {
         return false;
     }
+    // JLREQ's classes order Japanese text; inside Latin text a quote joins the word it touches
+    // (don’t, it’s, ‘yes’): no break between a quote and a Western character, either way
+    // (UAX #14 treats ’ there as part of the word)
+    let quote = |c: char| matches!(c, '‘' | '’' | '“' | '”');
+    if (ca == BreakClass::Western && quote(b)) || (quote(a) && cb == BreakClass::Western) {
+        return false;
+    }
+    // UAX #14 classes IS (. , : ;) and EX (! ?): no break before them, after any character
+    if matches!(b, '.' | ',' | ':' | ';' | '!' | '?') {
+        return false;
+    }
     match (ca, cb) {
         // a space is followed by a break opportunity, never preceded by one
         (_, BreakClass::Space) => false,
