@@ -101,6 +101,7 @@ pub mod game;
 pub mod glyph;
 pub(crate) mod law_float;
 pub mod law_stamp;
+pub mod layout;
 pub mod license;
 pub mod ligature;
 pub mod medial_axis;
