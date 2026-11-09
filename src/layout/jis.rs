@@ -5,43 +5,46 @@
 //! (ideographs, kana, Latin letters and digits fall in their own groups because the rules
 //! treat them differently).
 
-/// The classes of JLREQ Appendix A that line breaking reads.
+/// The classes of JLREQ Appendix A that line breaking reads. The discriminant is the JLREQ class
+/// number (cl-NN); the three groups outside its list take 0, 100 and 101. `LAYOUT_SEMANTICS_ID`
+/// folds a digest of the class of every code point under these numbers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum BreakClass {
     /// cl-01 opening brackets: never at the end of a line
-    OpeningBracket,
+    OpeningBracket = 1,
     /// cl-02 closing brackets: never at the start of a line
-    ClosingBracket,
+    ClosingBracket = 2,
     /// cl-03 hyphens: never at the start of a line
-    Hyphen,
+    Hyphen = 3,
     /// cl-04 dividing punctuation (？ ！): never at the start of a line
-    DividingPunctuation,
+    DividingPunctuation = 4,
     /// cl-05 middle dots (・ ： ；): never at the start of a line
-    MiddleDot,
+    MiddleDot = 5,
     /// cl-06 full stops (。 ．): never at the start of a line; may hang
-    FullStop,
+    FullStop = 6,
     /// cl-07 commas (、 ，): never at the start of a line; may hang
-    Comma,
+    Comma = 7,
     /// cl-08 inseparable characters (— … ‥): two of the same are not split
-    Inseparable,
+    Inseparable = 8,
     /// cl-09 iteration marks (ヽ ヾ ゝ ゞ 々 〻): never at the start of a line
-    IterationMark,
+    IterationMark = 9,
     /// cl-10 prolonged sound mark (ー): not at the start of a line under `Kinsoku::Strict`
-    ProlongedSoundMark,
+    ProlongedSoundMark = 10,
     /// cl-11 small kana (ぁ ッ ...): not at the start of a line under `Kinsoku::Strict`
-    SmallKana,
+    SmallKana = 11,
     /// cl-12 prefixed abbreviations (￥ ＄ ...): never at the end of a line
-    PrefixedAbbreviation,
+    PrefixedAbbreviation = 12,
     /// cl-13 postfixed abbreviations (％ ℃ ...): never at the start of a line
-    PostfixedAbbreviation,
+    PostfixedAbbreviation = 13,
     /// cl-14 full-width ideographic space (U+3000)
-    IdeographicSpace,
+    IdeographicSpace = 14,
     /// A break opportunity after it (U+0020 and the other spaces Latin text breaks at)
-    Space,
+    Space = 100,
     /// Latin letters, digits and the punctuation of Latin text: no break inside a run of them
-    Western,
+    Western = 101,
     /// Ideographs, kana and everything else: a break is allowed on either side
-    Other,
+    Other = 0,
 }
 
 const OPENING: &[char] = &[

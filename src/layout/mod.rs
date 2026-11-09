@@ -26,6 +26,30 @@ use crate::param::MetaFontParams;
 use alloc::vec::Vec;
 use core::ops::Range;
 
+/// The recorded digests [`LAYOUT_SEMANTICS_ID`] folds (`tests/layout_semantics_id.rs` recomputes each):
+/// `"jis class table"`, the SHA-256 over every code point (`u32` little-endian) and its
+/// [`BreakClass`] number (`u8`) for the code points whose class is not `Other`; and
+/// `"layout corpus"`, the corpus digest of `tests/layout_oracle.rs`
+/// (`the_corpus_layout_is_the_recorded_bits`). Any change to the classes or to line breaking moves one.
+pub const LAYOUT_SEMANTICS_PINS: &[(&str, [u8; 32])] = &[
+    (
+        "jis class table",
+        crate::semantics::hex32("334f3e0cff14e9156aa5fb0ea6a5d52bd116b3d5dff1d9ed9b2525767dad9ea6"),
+    ),
+    (
+        "layout corpus",
+        crate::semantics::hex32("d566afc58c3cee9923b9abda86b2c51e4a1f38ecaea954f0b733710e5ebea9f8"),
+    ),
+];
+
+/// The identifier of this layout's arithmetic: the fold of [`LAYOUT_SEMANTICS_PINS`] by the
+/// procedure of [`crate::semantics`] (sort by name; SHA-256 over the name length as `u32`
+/// big-endian, the name and the digest). It is separate from
+/// [`crate::semantics::FONT_SEMANTICS_ID`], so a change to line breaking does not move the glyph
+/// identifier; a reader that persists laid-out lines carries this one.
+pub const LAYOUT_SEMANTICS_ID: [u8; 32] =
+    crate::semantics::hex32("9326edfe0589e549d0704e0fdb97b436637db8ba1ede2f1c7cd94e560aaabff5");
+
 /// The pen advances of one font at one style, in its own font units.
 pub trait GlyphMetrics {
     /// Font units per em
