@@ -97,6 +97,18 @@ pub struct LayoutParams {
     pub kinsoku: Kinsoku,
     /// Let a full stop or comma (cl-06 / cl-07) that would overflow hang past the measure
     pub hanging_punct: bool,
+    /// Whether long lines break: `Soft` breaks them within the measure; `None` breaks only at
+    /// a newline (a code block), and a line wider than the measure reports its `overflow`
+    pub wrap: Wrap,
+}
+
+/// How a paragraph's lines break.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Wrap {
+    /// Break within the measure (kinsoku, Latin words, hanging, forced breaks)
+    Soft,
+    /// Break only at a newline; a line may be wider than the measure
+    None,
 }
 
 /// One glyph placed on a line.
@@ -137,6 +149,9 @@ pub struct Line {
     pub width: i32,
     /// The width of the full stop or comma hung past the measure, 0 when none
     pub hang: i32,
+    /// How far the content runs past the measure (`width - measure`), 0 when it fits; only
+    /// [`Wrap::None`] lets a line overflow
+    pub overflow: i32,
     /// The baseline's distance from the top of the paragraph: `index * line_height + ascent`
     pub baseline: i32,
     pub end: LineEnd,
@@ -419,6 +434,9 @@ fn fit(
     start: usize,
     p: &LayoutParams,
 ) -> Result<(usize, i32, Option<LineEnd>), LayoutError> {
+    if p.wrap == Wrap::None {
+        todo!("STUB: Wrap::None (the oracles in tests/layout_oracle.rs come first)")
+    }
     let mut x = 0i32; // pen after the glyphs so far (kerning between them included)
     let mut last_break: Option<usize> = None;
     for i in start..seg.len() {
@@ -486,6 +504,7 @@ fn push_line(
         src,
         width,
         hang,
+        overflow: (width - p.measure).max(0),
         baseline: index * p.line_height + p.ascent,
         end,
     });

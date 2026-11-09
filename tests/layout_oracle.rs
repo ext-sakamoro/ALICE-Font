@@ -6,7 +6,7 @@
 //! in the crate fails them. Widths are checked against the sum of the metrics' advances.
 use alice_font::layout::{
     jis, layout, BreakClass, GlyphMetrics, Kinsoku, LayoutError, LayoutParams, LineEnd, MetricsSet,
-    Paragraph, ProceduralMetrics, StyleId, StyleSpan,
+    Paragraph, ProceduralMetrics, StyleId, StyleSpan, Wrap,
 };
 use sha2::{Digest, Sha256};
 
@@ -73,6 +73,7 @@ fn params(measure: i32) -> LayoutParams {
         ascent: 1200,
         kinsoku: Kinsoku::Strict,
         hanging_punct: false,
+        wrap: Wrap::Soft,
     }
 }
 fn lay(text: &str, measure: i32) -> Paragraph {
@@ -383,6 +384,81 @@ fn latin_punctuation_never_starts_a_line() {
             }
         }
     }
+}
+
+// Code blocks: indentation and runs of spaces stay as glyphs at their pen positions
+#[test]
+fn leading_spaces_and_space_runs_are_kept() {
+    let p = lay("    if x  {", 9000);
+    assert_eq!(p.lines.len(), 1);
+    let xs: Vec<i32> = p.glyphs.iter().map(|g| g.x).collect();
+    assert_eq!(
+        xs,
+        [0, 250, 500, 750, 1000, 1500, 2000, 2250, 2750, 3000, 3250]
+    );
+    assert_eq!(line_text(&p, 0), "    if x  {");
+    assert_eq!(
+        // 4*250 + "if" 1000 + 250 + "x" 500 + 2*250 + "{" 500
+        p.lines[0].width,
+        3750,
+        "inner and leading spaces count, none trail"
+    );
+}
+
+// "a\n\nb": an empty line between (its src is the second newline's offset, end Hard); a text that
+// ends in a newline gets one more, empty line (end End)
+#[test]
+fn blank_lines_and_a_final_newline() {
+    let p = lay("a\n\nb", 9000);
+    assert_eq!(p.lines.len(), 3);
+    assert_eq!(
+        (
+            p.lines[1].glyphs.clone(),
+            p.lines[1].src.clone(),
+            p.lines[1].end
+        ),
+        (1..1, 2..2, LineEnd::Hard)
+    );
+    assert_eq!(line_text(&p, 2), "b");
+    let q = lay("a\n", 9000);
+    assert_eq!(q.lines.len(), 2);
+    assert_eq!(
+        (
+            q.lines[0].end,
+            q.lines[1].glyphs.clone(),
+            q.lines[1].src.clone(),
+            q.lines[1].end
+        ),
+        (LineEnd::Hard, 1..1, 2..2, LineEnd::End)
+    );
+    assert_eq!(q.height, 2 * 1500);
+}
+
+// Wrap::None (a code block): a line breaks only at a newline; its width is the sum of its
+// advances and the part past the measure is reported as overflow
+#[test]
+fn no_wrap_breaks_only_at_newlines_and_reports_the_overflow() {
+    let text = "let total = items.iter().map(|x| x.len()).sum();\n    x";
+    let mut prm = params(5000);
+    prm.wrap = Wrap::None;
+    let p = layout(text, &whole(text), &set(), &prm).unwrap();
+    assert_eq!(p.lines.len(), 2);
+    let first = text.lines().next().unwrap();
+    let want: i32 = first
+        .chars()
+        .map(|c| set().regular.advance(c).unwrap())
+        .sum();
+    assert_eq!(
+        (p.lines[0].width, p.lines[0].overflow, p.lines[0].end),
+        (want, want - 5000, LineEnd::Hard)
+    );
+    assert_eq!((p.lines[1].width, p.lines[1].overflow), (1500, 0));
+    // a glyph wider than the measure is not an error without wrapping
+    prm.measure = 100;
+    assert!(layout("漢", &whole("漢"), &set(), &prm).is_ok());
+    // and with Soft nothing ever overflows
+    let soft = lay(text, 5000);
+    assert!(soft.lines.iter().all(|l| l.overflow == 0));
 }
 
 #[test]
