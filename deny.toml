@@ -94,6 +94,11 @@ allow = ["LicenseRef-Proprietary"]
 name = "alice-det-math"
 allow = ["LicenseRef-Proprietary"]
 
+# alice-sdf (feature `sdf`, the SDF bridge): LicenseRef-Proprietary at the main this crate takes it from
+[[licenses.exceptions]]
+name = "alice-sdf"
+allow = ["LicenseRef-Proprietary"]
+
 # ---------------------------------------------------------------------------
 # Bans (banned crate / duplicate / wildcard)
 # ---------------------------------------------------------------------------

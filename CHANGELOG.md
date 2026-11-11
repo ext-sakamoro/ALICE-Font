@@ -33,7 +33,7 @@ All notable changes to ALICE-Font will be documented in this file.
 - 試験 `tests/outline_raster.rs` (箱の閉じた式、手で書いた和集合の多角形への総当たり、穴、重なり、接する contour、出力の bit の digest) と `tests/outline_raster_input.rs` (非有限の入力と上限)
 
 ### Changed
-- 依存 `alice-sdf` (feature `sdf`) を crates.io の 2 系から ALICE-SDF の `branch = "main"` + version 7 に替えた 使う API (`prelude::Sdf2dNode` の Bezier、`sdf2d::eval_2d`) は 7 でも同じで、`cargo test --features sdf` の試験 (解析解の oracle を含む) は変わらず通る
+- 依存 `alice-sdf` (feature `sdf`) を crates.io の 2 系から ALICE-SDF の `branch = "main"` + version 7 に替えた 使う API (`prelude::Sdf2dNode` の Bezier、`sdf2d::eval_2d`) は 7 でも同じで、`cargo test --features sdf` の試験 (解析解の oracle を含む) は変わらず通る ALICE-SDF の main は LicenseRef-Proprietary なので deny.toml の license の例外に alice-sdf を足した
 - CI: layout-wasm の wasmtime を v49.0.2 に固定し、配布物を SHA-256 (ca14988c…、release の digest と手元の再計算で一致) で照合して retry 付きで取り、binary を cache する (setup action は latest を選び、配布元の HTTP 504 で job が落ちた) 配布元が落ち続けた時は同じ版の wasmtime-cli を crates.io から `cargo install --locked` で作る (cargo が crate ごとの checksum を照合する) `wasmtime --version` が動かなければ fail
 
 - `law_stamp::read` と `StampedEnvelope::open` は `PREVIOUS_SEMANTICS_IDS` の値で刻まれた form も読む (0.8.0 より前の build が書いた file を `tests/data/previous-id/` に保存して確かめる)
