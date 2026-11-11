@@ -26,7 +26,7 @@ pyo3 = ["dep:pyo3"]
 serde = ["dep:serde", "std"]
 # `sdf` — Milestone A.3 (2026-08-06): ALICE-SDF bridge、Stroke / GlyphSkeleton を
 # alice_sdf::Sdf2dNode に変換する parametric adapter (Bezier variant 経由の law-only path)
-# alice-sdf の font feature (marker) と対称、crates.io 2.x dep (2026-09-16、path dep から移行)
+# alice-sdf の font feature (marker) と対称、ALICE-SDF の main branch (git) から取る
 sdf = ["dep:alice-sdf", "std"]
 
 [workspace]
@@ -37,7 +37,7 @@ exclude = ["fuzz", "tools/render-ref"]
 [dependencies]
 pyo3 = { version = "0.22", optional = true, features = ["extension-module"] }
 serde = { version = "1", optional = true, features = ["derive"] }
-alice-sdf = { version = "2", optional = true, default-features = false }
+alice-sdf = { git = "https://github.com/ext-sakamoro/ALICE-SDF", branch = "main", version = "7", optional = true, default-features = false }
 # The branch: src/semantics.rs folds the identifier of each function this crate calls, and stops the compile
 # when one of them moves.
 alice-det-math = { git = "https://github.com/ext-sakamoro/ALICE-DetMath", branch = "main", version = "0.6", default-features = false }
