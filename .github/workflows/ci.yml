@@ -189,6 +189,12 @@ jobs:
           PYO3_PYTHON: python3.12
           CLIPPY_CONF_DIR: .github/clippy-lib
         run: cargo clippy --lib --all-features -- -D warnings
+      # another crate's PREVIOUS_*_SEMANTICS_IDS is used only as a whole list (an upstream empties it on
+      # a major version; scripts/upstream_previous_ids_check.py, shared with the other ALICE crates)
+      - name: Upstream previous identifiers (test, then whole-list uses only)
+        run: |
+          python3 scripts/test_upstream_previous_ids_check.py
+          python3 scripts/upstream_previous_ids_check.py
       # G9: FONT_SEMANTICS_ID moves only with a breaking version, the old value kept and both named in
       # CHANGELOG.md
       - name: Identifier moves (tests)

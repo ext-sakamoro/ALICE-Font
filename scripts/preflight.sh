@@ -460,6 +460,16 @@ step "ci.yml / clippy: API boundary (rustdoc JSON, every item decided, G7 / G8)"
 python3 scripts/test_api_boundary.py
 python3 scripts/api_boundary.py
 
+step "ci.yml / pyo3: Upstream previous identifiers (test, then whole-list uses only)"
+(
+  gh_step ci.yml.pyo3
+(
+  export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"
+  python3 scripts/test_upstream_previous_ids_check.py
+  python3 scripts/upstream_previous_ids_check.py
+)
+)
+
 step "ci.yml / clippy: Identifier moves (tests, then the identifier)"
 CARGO_TERM_COLOR=always python3 scripts/test_id_move_check.py
 python3 scripts/id_move_check.py
