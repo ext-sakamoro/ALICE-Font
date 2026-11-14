@@ -9,3 +9,6 @@ publish = false
 [dependencies]
 ttf-parser = "0.21"
 image = { version = "0.25", default-features = false, features = ["png"] }
+
+[package.metadata.alice]
+surfaces = []

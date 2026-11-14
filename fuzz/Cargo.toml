@@ -55,3 +55,6 @@ members = ["."]
 name = "fuzz_sfnt_font"
 path = "fuzz_targets/fuzz_sfnt_font.rs"
 doc = false
+
+[package.metadata.alice]
+surfaces = []
