@@ -26,31 +26,29 @@
 //! Tests keep the platform `f32::min` / `f32::max` for their independent oracles, so these helpers
 //! and the ban live on the library only.
 
-use alice_det_math::ops;
-
 /// Law maximum of two `f32` (alice-det-math's `max`): the platform value except the sign of an equal
 /// pair of zeros, which is fixed to the order `-0 < +0`; a both-NaN pair gives the canonical NaN.
 #[inline(always)]
 pub(crate) fn law_max_f32(a: f32, b: f32) -> f32 {
-    ops::max(a, b)
+    alice_det_math::ops::max(a, b)
 }
 
 /// Law minimum of two `f32` ([`law_max_f32`]'s rule; alice-det-math's `min`).
 #[inline(always)]
 pub(crate) fn law_min_f32(a: f32, b: f32) -> f32 {
-    ops::min(a, b)
+    alice_det_math::ops::min(a, b)
 }
 
 /// Law maximum of two `f64` (alice-det-math's `max64`).
 #[inline(always)]
 pub(crate) fn law_max_f64(a: f64, b: f64) -> f64 {
-    ops::max64(a, b)
+    alice_det_math::ops::max64(a, b)
 }
 
 /// Law minimum of two `f64` (alice-det-math's `min64`).
 #[inline(always)]
 pub(crate) fn law_min_f64(a: f64, b: f64) -> f64 {
-    ops::min64(a, b)
+    alice_det_math::ops::min64(a, b)
 }
 
 /// Law clamp of an `f32` to `[lo, hi]`, composed from the det-math minimum and maximum (see the
