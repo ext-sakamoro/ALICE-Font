@@ -582,7 +582,7 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing tool: $1 ($2)" >&2; 
 has_toolchain() { grep -q "^$1" <<<"$(rustup toolchain list)"; }
 
 # Steps CI runs that this file cannot reproduce locally (they can only fail remotely):
-#   - ci.yml:test:ALICE-Law conformance manifest (--check-manifest at the pinned revision) (no cargo / grep)
+#   - ci.yml:test:ALICE-Law G11 self-check (the four G11 checks at the pinned revision) (no cargo / grep)
 #   - ci.yml:layout-wasm:Ensure wasm32-wasip1 rust-std is installed (pinned toolchain) (no cargo / grep)
 #   - ci.yml:layout-wasm:Install wasmtime (its `if:` runs on what happened earlier on the runner)
 #   - ci.yml:layout-wasm:Check wasmtime runs (no cargo / grep)
@@ -1046,6 +1046,12 @@ step "ci.yml / float-environment: Semantics identifier reproduces (goldens + fol
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"; scripts/run_tests.sh semantics_golden=10,font_semantics_id=9,law_stamp=8,previous_id_artifacts=4 -- cargo test --test semantics_golden --test font_semantics_id --test law_stamp --test previous_id_artifacts )
 )
 
+step "ci.yml / float-environment: Semantics identifier reproduces under the release profile (goldens + fold, Law stamp)"
+(
+  gh_step ci.yml.float-environment
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"; scripts/run_tests.sh semantics_golden=10,font_semantics_id=9,law_stamp=8,previous_id_artifacts=4 -- cargo test --release --test semantics_golden --test font_semantics_id --test law_stamp --test previous_id_artifacts )
+)
+
 step "ci.yml / float-environment: No negated fma result (syntax tree, tests then check)"
 (
   gh_step ci.yml.float-environment
@@ -1104,7 +1110,7 @@ leg_not_run() {
     *) not_run "$1 [runs-on=$2] (an OS leg this host does not run)" ;;
   esac
 }
-not_run 'ci.yml:test:ALICE-Law conformance manifest (--check-manifest at the pinned revision) (no cargo / grep)'
+not_run 'ci.yml:test:ALICE-Law G11 self-check (the four G11 checks at the pinned revision) (no cargo / grep)'
 not_run 'ci.yml:layout-wasm:Check wasmtime runs (no cargo / grep)'
 not_run 'ci.yml:pyo3: uses actions/setup-python@v6 (an action this file cannot run)'
 not_run 'ci.yml:pyo3:Clippy (all features, all targets) (needs network / runner-only)'
