@@ -40,6 +40,16 @@ jobs:
         run: cargo test --workspace
       - name: Test (full native feature set)
         run: cargo test --workspace --features "$NATIVE_FEATURES"
+      # ALICE-Law: the conformance manifest and its anchors, by ALICE-Law's checker at the pinned revision (G11 is
+      # fail-known here; the full G11 self-check replaces this step when the crate's G11 table lands)
+      - name: ALICE-Law conformance manifest (--check-manifest at the pinned revision)
+        shell: bash
+        run: |
+          rev=$(awk '$1 == "rev" { print $2 }' .github/shared-files-pin)
+          git -c core.autocrlf=false clone --quiet --filter=blob:none https://github.com/ext-sakamoro/ALICE-Law.git "$RUNNER_TEMP/alice-law"
+          git -C "$RUNNER_TEMP/alice-law" checkout --quiet --detach "$rev"
+          PY=$(command -v python3 || command -v python)
+          "$PY" "$RUNNER_TEMP/alice-law/scripts/conformance_roster_check.py" --check-manifest . --ref HEAD
 
   raster-bits:
     name: Outline raster bits (${{ matrix.os }})
