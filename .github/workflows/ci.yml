@@ -40,6 +40,10 @@ jobs:
         run: cargo test --workspace
       - name: Test (full native feature set)
         run: cargo test --workspace --features "$NATIVE_FEATURES"
+      # ALICE-Law G5: the whole test suite under the release profile, on this aarch64 runner (the full native
+      # feature set includes the default std)
+      - name: Test (release profile, full native feature set)
+        run: cargo test --workspace --release --features "$NATIVE_FEATURES"
       # ALICE-Law: the conformance manifest and its anchors, by ALICE-Law's checker at the pinned revision (G11 is
       # fail-known here; the full G11 self-check replaces this step when the crate's G11 table lands)
       - name: ALICE-Law conformance manifest (--check-manifest at the pinned revision)

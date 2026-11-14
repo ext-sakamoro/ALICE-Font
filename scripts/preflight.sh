@@ -998,6 +998,12 @@ step "ci.yml / test: Test (full native feature set)"
 ( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"; cargo test --workspace --features "$NATIVE_FEATURES" )
 )
 
+step "ci.yml / test: Test (release profile, full native feature set)"
+(
+  gh_step ci.yml.test
+( export CARGO_TERM_COLOR="always" RUSTFLAGS="-Dwarnings" NATIVE_FEATURES="std,ffi,serde"; cargo test --workspace --release --features "$NATIVE_FEATURES" )
+)
+
 step "ci.yml / raster-bits: Outline raster oracles and output digest"
 (
   gh_step ci.yml.raster-bits

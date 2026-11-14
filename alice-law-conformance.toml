@@ -72,11 +72,11 @@ reference_repo = "ALICE-DB"
 [G5]
 status = "pass"
 evidence = [
-    ".github/workflows/ci.yml test job runs cargo test on the release profile as well as debug (the matrix OS legs), and scripts/preflight.sh runs the test suites in its full part under the release profile; the golden the_output_bits_are_the_same_on_every_platform and the analytic oracle run on both",
+    ".github/workflows/ci.yml test job (ubuntu-24.04-arm, aarch64) runs the whole test suite with the full native feature set under the release profile as well as debug (`.github/workflows/ci.yml#- name: Test (release profile, full native feature set)`), and scripts/preflight.sh runs the same command (`scripts/preflight.sh#step \"ci.yml / test: Test (release profile, full native feature set)\"`); the golden the_output_bits_are_the_same_on_every_platform and the analytic oracle run on both profiles",
 ]
 mutant = "the release run executes the same test binary as the debug run under the release profile; the G4 mutant (the shifted sample point) fails the_output_bits_are_the_same_on_every_platform in release as it does in debug (measured 2026-10-26)"
 since = ""
-note = "the aarch64 leg is macOS (Apple Silicon); the digest is the same on x86_64 and aarch64, debug and release, because the arithmetic is det-math and IEEE basic operations."
+note = "the release leg runs on the ubuntu-24.04-arm (aarch64) runner of the test job; the digest is the same on x86_64 and aarch64, debug and release, because the arithmetic is det-math and IEEE basic operations."
 reference_repo = "ALICE-DB"
 
 [G7]
