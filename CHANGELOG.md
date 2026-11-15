@@ -13,6 +13,7 @@ All notable changes to ALICE-Font will be documented in this file.
 - `FONT_SEMANTICS_CHECKED_AT` を 0.8.0 にした (固定入力 9 本の記録 bit は 0.8.0 で取り直して同じ)
 
 ### Fixed
+- 複数字の輪郭の shader (`MULTI_OUTLINE_VERT_GLSL` / `MULTI_OUTLINE_FRAG_GLSL`): 字の座標を quad の補間でなく画素の中心 (`gl_FragCoord` から新しい uniform `uViewOrigin` を引いたもの) から CPU の基準と同じ式で求め、字の箱の外は捨てる quad は 1 画素ずつ広げ、箱の縁の画素も必ずその字の instance が評価する 字の箱が画素の途中に落ちる時 (advance と px の積が整数でない字、ラテン文字など) に頂点の丸めで斜めの縁の諧調がずれていた (software の WebGL2 で最大 11/255) 画面全体を自分の canvas に描く呼び出しは `uViewOrigin` を設定しなくても 0 で同じ 送る UBO の bytes と `FONT_SEMANTICS_ID` は変わらない
 - 空白は glyph の無い文字ではなく、何も描かない glyph にした: `glyph_dispatcher::generate(' ')` はこれまで placeholder の箱を描いていた U+0020 は 1/4 em (U+2005 FOUR-PER-EM SPACE)、U+3000 (全角の空白) は 1 em (かな・漢字の送り) だけ進み、場は空、box は空の場の box `skeleton` は空白に stroke の無い `Some` を返し、`None` は glyph の無い文字だけ stroke の無い骨格の rasterize は空の場を返す (これまでは box が反転した極値になった) 試験 `tests/glyph_whitespace.rs`
 
 ### Added

@@ -36,6 +36,9 @@ layout(std140) uniform MultiOutlineBlock {
     vec4 uTextMeta;
 };
 
+uniform vec2 uCanvasSize; // the viewport's size, pixels
+uniform float uYPadding;  // em above and below the glyph box
+uniform vec2 uViewOrigin; // the viewport's lower left corner in the framebuffer, pixels (0 for a canvas of its own)
 uniform vec4 uFgColor;
 uniform vec4 uBgColor;
 uniform float uAntiAlias;
@@ -66,9 +69,37 @@ float cross2d(vec2 a, vec2 b) {
 }
 
 void main() {
-    vec2 p = vUV;
     int glyphIdx = vGlyphIdx;
     vec4 meta = uGlyphMetas[glyphIdx];
+    // The glyph point of this pixel's centre, by the same expressions a CPU drawing of this shader uses
+    // for a pixel centre: the quad's interpolated coordinate is not used, so the value does not depend on
+    // where the rasterizer snaps the quad's corners
+    float w = uCanvasSize.x;
+    float h = uCanvasSize.y;
+    vec2 at = gl_FragCoord.xy - uViewOrigin;
+    // `at.x` is `col + 0.5`; `h - at.y` is `row + 0.5` with rows counted from the top
+    float nx = at.x / w * 2.0 - 1.0;
+    float ny = 1.0 - (h - at.y) / h * 2.0;
+    float emH = 1.0 + 2.0 * uYPadding;
+    float totalAdv = uTextMeta.x;
+    float canvasAspect = w / max(h, 1.0);
+    float glyphAspect = totalAdv / emH;
+    float sX = 1.0;
+    float sY = 1.0;
+    if (glyphAspect >= canvasAspect) {
+        sY = canvasAspect / glyphAspect;
+    } else {
+        sX = glyphAspect / canvasAspect;
+    }
+    float v = (ny / sY + 1.0) * 0.5;
+    float xEm = (nx / sX + 1.0) * 0.5 * totalAdv;
+    float advance = meta.x;
+    float u = (xEm - meta.z) / advance;
+    // outside this glyph's box: another instance (or nothing) owns the pixel
+    if (advance <= 0.0 || u < 0.0 || u >= 1.0 || v < 0.0 || v >= 1.0) {
+        discard;
+    }
+    vec2 p = vec2(u, v * emH - uYPadding);
     int contourCount = int(meta.y);
 
     // 該当 glyph の point base offset (flat array 内)

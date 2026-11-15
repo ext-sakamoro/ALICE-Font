@@ -318,14 +318,18 @@ pub const MULTI_OUTLINE_UBO_SIZE: usize = MULTI_OUTLINE_POINTS_AREA_SIZE
     + 16;
 
 /// The vertex shader (GLSL ES 3.00, WebGL2) that reads [`MultiOutlineGlyphPayload::to_std140_ubo_chunks`]:
-/// one instance per glyph, the text's em box fitted into the canvas with its aspect kept
+/// one instance per glyph, the text's em box fitted into the canvas with its aspect kept, each quad grown
+/// by a pixel so the fragment shader sees every pixel of the glyph's box
 ///
 /// Uniforms: the `MultiOutlineBlock` block, `uCanvasSize` (pixels) and `uYPadding` (em above and
 /// below the baseline box); attribute `aQuadPos` (the unit quad, -1..1)
 pub const MULTI_OUTLINE_VERT_GLSL: &str =
     include_str!("../shaders/analytical_multi_outline.vert.glsl");
 
-/// The fragment shader (GLSL ES 3.00, WebGL2) paired with [`MULTI_OUTLINE_VERT_GLSL`]: the nonzero
+/// The fragment shader (GLSL ES 3.00, WebGL2) paired with [`MULTI_OUTLINE_VERT_GLSL`]: the glyph point
+/// of each pixel is computed from its centre (`gl_FragCoord` less `uViewOrigin`, the viewport's lower
+/// left; uniforms `uCanvasSize` and `uYPadding` as for the vertex shader), outside the glyph's box the
+/// pixel is discarded; the nonzero
 /// winding of the glyph's contours for inside, the nearest segment for the distance, and
 /// `1 - smoothstep(-uAntiAlias, uAntiAlias, d)` for the coverage that mixes `uBgColor` to `uFgColor`
 pub const MULTI_OUTLINE_FRAG_GLSL: &str =
@@ -827,5 +831,11 @@ mod tests {
         }
         assert!(MULTI_OUTLINE_VERT_GLSL.contains("gl_InstanceID"));
         assert!(MULTI_OUTLINE_FRAG_GLSL.contains("smoothstep(-uAntiAlias, uAntiAlias, sd)"));
+        // the glyph point comes from the pixel's centre, not from the interpolated quad coordinate
+        // (interpolation from snapped corners moved the anti-aliased edges by up to 11/255 where a glyph's
+        // box falls between pixels)
+        assert!(MULTI_OUTLINE_FRAG_GLSL.contains("gl_FragCoord.xy - uViewOrigin"));
+        assert!(!MULTI_OUTLINE_FRAG_GLSL.contains("vec2 p = vUV"));
+        assert!(MULTI_OUTLINE_FRAG_GLSL.contains("discard"));
     }
 }

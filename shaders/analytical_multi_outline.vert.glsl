@@ -77,5 +77,9 @@ void main() {
     // 後で sX で aspect-fit scale)
     float emX = ((xOff + uv.x * advance) / totalEmW) * 2.0 - 1.0;
     float emY = aQuadPos.y; // [-1, +1] は em box 全体の縦範囲
-    gl_Position = vec4(emX * sX, emY * sY, 0.0, 1.0);
+    // The quad only picks which glyph a pixel is evaluated for: it is grown by one pixel on every side, so
+    // a pixel whose centre is on the glyph box's edge is always rasterized by this instance (the fragment
+    // shader computes the glyph point from the pixel's centre and discards outside the box)
+    vec2 grow = aQuadPos * (2.0 / max(uCanvasSize, vec2(1.0)));
+    gl_Position = vec4(emX * sX + grow.x, emY * sY + grow.y, 0.0, 1.0);
 }
