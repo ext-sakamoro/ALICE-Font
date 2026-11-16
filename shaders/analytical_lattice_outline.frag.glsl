@@ -2,15 +2,17 @@
 // ALICE-Font: glyph outlines drawn on a deformable lattice (fragment shader)
 //
 // Pairs with analytical_lattice_outline.vert.glsl. The glyph point of a pixel is computed as in
-// analytical_multi_outline.frag.glsl, from the pixel's centre with the same expressions (q below),
-// and then moved by the lattice: with lD = the barycentric coordinates of q in the deformed triangle
-// and lR = those of q in the rest triangle, the rest point is q + (R·lD - R·lR). R·lD is the point of
-// the rest glyph that the deformation carried to this pixel; R·lR reproduces q in the same arithmetic,
-// so the difference is the deformation's displacement at q, and at rest (D = R, bit for bit) the two
-// products are the same expression of the same numbers and the difference is exactly 0: the pixel is
-// evaluated at q, as the plain path does. Outside the glyph box (in rest coordinates) the pixel is
-// discarded, as the plain path does. The outline evaluation below the rest point is the plain
-// shader's, byte for byte (a test in `outline::lattice` keeps the two copies equal).
+// analytical_multi_outline.frag.glsl, from the pixel's centre with the same expressions (q below). Its
+// rest point r = q + c solves c + disp(q + c) = 0, disp being the Catmull-Rom displacement of the
+// triangle's lattice cell (its 4 x 4 nodes from uDisp): the triangle's barycentric map gives the first
+// guess (c = R lD - R lR, lD and lR the barycentric coordinates of q in the deformed and in the rest
+// triangle), then NEWTON_STEPS Newton steps (a literal). The pixel is not drawn when the residual is above
+// RESIDUAL_PX pixels or r lies outside the cell by more than half a sub-cell (a fold: the solve went to
+// another layer of the sheet). At rest disp is 0 and both products are the same expression of the same
+// numbers: c is exactly 0 and the pixel is evaluated at q, as the plain path does. Outside the glyph box
+// (in rest coordinates) the pixel is discarded, as the plain path does. The outline evaluation below the
+// rest point is the plain shader's, byte for byte (a test in `outline::lattice` keeps the two copies equal),
+// and `outline::lattice::GlyphLattice::rest_point` is this computation on the CPU.
 //
 // SPDX-License-Identifier: LicenseRef-Proprietary
 // Author: Moroya Sakamoto
@@ -39,6 +41,13 @@ flat in int vGlyphIdx;
 flat in vec4 vD01;
 flat in vec4 vD2R0;
 flat in vec4 vR12;
+flat in vec2 vCell;
+uniform highp sampler2D uDisp; // RG32F: (n + 2) wide, 4 (n + 2) high, glyph slot s in rows s (n + 2)..
+uniform int uLatticeN;           // nodes per side
+uniform int uLatticeK;           // cell subdivision
+
+const int NEWTON_STEPS = 4;
+const float RESIDUAL_PX = 0.015625;
 out vec4 fragColor;
 
 // Packed vec4 から global index (0..1023) の point (vec2) を取得。
@@ -71,6 +80,44 @@ vec2 carry(vec2 q, vec2 a, vec2 b, vec2 c, vec2 ra, vec2 rb, vec2 rc, out bool o
     float l2 = cross2d(b - a, q - a) / den;
     float l0 = 1.0 - l1 - l2;
     return ra * l0 + rb * l1 + rc * l2;
+}
+
+vec4 catmullRom(float s) {
+    float s2 = s * s;
+    float s3 = s2 * s;
+    return vec4((-s + 2.0 * s2 - s3) * 0.5, (2.0 - 5.0 * s2 + 3.0 * s3) * 0.5,
+                (s + 4.0 * s2 - 3.0 * s3) * 0.5, (s3 - s2) * 0.5);
+}
+
+vec4 catmullRomD(float s) {
+    float s2 = s * s;
+    return vec4((-1.0 + 4.0 * s - 3.0 * s2) * 0.5, (-10.0 * s + 9.0 * s2) * 0.5,
+                (1.0 + 8.0 * s - 9.0 * s2) * 0.5, (3.0 * s2 - 2.0 * s) * 0.5);
+}
+
+// the cell's displacement at (s, t) and its derivatives in s and t
+void cellPatch(vec2 nd[16], float s, float t, out vec2 d, out vec2 ds, out vec2 dt) {
+    vec4 ws = catmullRom(s);
+    vec4 wt = catmullRom(t);
+    vec4 dws = catmullRomD(s);
+    vec4 dwt = catmullRomD(t);
+    d = vec2(0.0);
+    ds = vec2(0.0);
+    dt = vec2(0.0);
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            vec2 p = nd[y * 4 + x];
+            float w = ws[x] * wt[y];
+            float wu = dws[x] * wt[y];
+            float wv = ws[x] * dwt[y];
+            d.x += w * p.x;
+            d.y += w * p.y;
+            ds.x += wu * p.x;
+            ds.y += wu * p.y;
+            dt.x += wv * p.x;
+            dt.y += wv * p.y;
+        }
+    }
 }
 
 void main() {
@@ -111,7 +158,46 @@ void main() {
     if (!okD || !okR) {
         discard;
     }
-    vec2 rest = q + (fromD - fromR);
+    vec2 c = fromD - fromR;
+    int ci = int(vCell.x + 0.5);
+    int cj = int(vCell.y + 0.5);
+    float hh = 1.0 / float(uLatticeN - 1);
+    vec2 o = vec2(float(ci) * hh, float(cj) * hh);
+    vec2 nd[16];
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            nd[y * 4 + x] = texelFetch(uDisp, ivec2(ci + x, glyphIdx * (uLatticeN + 2) + cj + y), 0).xy;
+        }
+    }
+    vec2 d;
+    vec2 ds;
+    vec2 dt;
+    for (int it = 0; it < NEWTON_STEPS; it++) {
+        vec2 r = q + c;
+        cellPatch(nd, (r.x - o.x) / hh, (r.y - o.y) / hh, d, ds, dt);
+        vec2 g = c + d;
+        float a = 1.0 + ds.x / hh;
+        float b = dt.x / hh;
+        float e = ds.y / hh;
+        float f = 1.0 + dt.y / hh;
+        float det = a * f - b * e;
+        if (abs(det) > 0.0) {
+            c.x -= (f * g.x - b * g.y) / det;
+            c.y -= (a * g.y - e * g.x) / det;
+        }
+    }
+    vec2 rest = q + c;
+    cellPatch(nd, (rest.x - o.x) / hh, (rest.y - o.y) / hh, d, ds, dt);
+    vec2 g = c + d;
+    // one pixel in the glyph's box coordinates, as the vertex shader computes it
+    vec2 px = vec2(totalAdv / (max(w, 1.0) * sX * max(advance, 1e-30)), 1.0 / (max(h, 1.0) * sY));
+    if (!(abs(g.x) <= RESIDUAL_PX * px.x && abs(g.y) <= RESIDUAL_PX * px.y)) {
+        discard;
+    }
+    float m = hh / (2.0 * float(uLatticeK));
+    if (rest.x < o.x - m || rest.x > o.x + hh + m || rest.y < o.y - m || rest.y > o.y + hh + m) {
+        discard;
+    }
     float u = rest.x;
     float v = rest.y;
     // outside this glyph's box: another glyph (or nothing) owns the pixel

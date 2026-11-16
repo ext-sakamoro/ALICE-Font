@@ -31,7 +31,7 @@ layout(std140) uniform MultiOutlineBlock {
 uniform vec2 uCanvasSize; // pixel dimensions (W, H)
 uniform float uYPadding;  // em above and below the glyph box
 
-in vec2 aSlot;  // (glyph slot in the chunk 0..3, which of the triangle's vertices this one is 0..2)
+in vec4 aSlot;  // (glyph slot in the chunk 0..3, which of the triangle's vertices this one is 0..2, cell i, cell j)
 in vec4 aD01;   // D0.xy, D1.xy
 in vec4 aD2R0;  // D2.xy, R0.xy
 in vec4 aR12;   // R1.xy, R2.xy
@@ -42,6 +42,7 @@ flat out int vGlyphIdx;
 flat out vec4 vD01;
 flat out vec4 vD2R0;
 flat out vec4 vR12;
+flat out vec2 vCell;
 
 void main() {
     int idx = int(aSlot.x + 0.5);
@@ -67,6 +68,7 @@ void main() {
     vD01 = aD01;
     vD2R0 = aD2R0;
     vR12 = aR12;
+    vCell = aSlot.zw;
     // this vertex, rasterized one pixel further out when it is on the border
     vec2 d = (which == 0) ? aD01.xy + aO01.xy * px
            : ((which == 1) ? aD01.zw + aO01.zw * px : aD2R0.xy + aO2 * px);

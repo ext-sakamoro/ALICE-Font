@@ -25,6 +25,7 @@
 //!
 //! Author: Moroya Sakamoto
 
+use alloc::vec;
 use alloc::vec::Vec;
 use core::fmt;
 
@@ -44,9 +45,15 @@ pub const LATTICE_OUTLINE_FRAG_GLSL: &str =
     include_str!("../../shaders/analytical_lattice_outline.frag.glsl");
 
 /// Floats per vertex written by [`lattice_vertices`], in order: glyph slot, which vertex of the triangle
-/// (0..2), `D0 D1 D2` (deformed vertices), `R0 R1 R2` (rest vertices), `O0 O1 O2` (outward directions),
-/// each point two floats `(u, v)`
-pub const LATTICE_VERTEX_FLOATS: usize = 20;
+/// (0..2), the cell `i, j`, `D0 D1 D2` (deformed vertices), `R0 R1 R2` (rest vertices), `O0 O1 O2`
+/// (outward directions), each point two floats `(u, v)`
+pub const LATTICE_VERTEX_FLOATS: usize = 22;
+
+/// Newton steps per pixel, a literal (the same in [`LATTICE_OUTLINE_FRAG_GLSL`]; a test keeps them equal)
+pub const LATTICE_NEWTON_STEPS: usize = 4;
+
+/// The largest residual, in pixels, a pixel's solve may leave and still be drawn
+pub const LATTICE_RESIDUAL_PX: f32 = 1.0 / 64.0;
 
 /// The most nodes along one side of a glyph's lattice
 pub const LATTICE_MAX_NODES_PER_SIDE: usize = 64;
@@ -98,6 +105,8 @@ pub struct LatticeTriangle {
     pub rest: [[f32; 2]; 3],
     /// Each vertex's outward direction on the lattice's border (`-1`, `0` or `1` per axis; `0` inside)
     pub outward: [[f32; 2]; 3],
+    /// The lattice cell `(i, j)` the triangle lies in (its Catmull-Rom patch is the one solved)
+    pub cell: [u16; 2],
 }
 
 fn check_n(n: usize) -> Result<(), LatticeError> {
@@ -121,57 +130,25 @@ fn catmull_rom(s: f32) -> [f32; 4] {
     ]
 }
 
-/// The displacements of a lattice's nodes from rest, read with ghosts past the border (see the module
-/// doc); a ghost is only ever one node past the border
-struct Displacements {
-    n: usize,
-    d: Vec<[f32; 2]>,
+/// The derivatives of [`catmull_rom`]'s weights in `s`
+fn catmull_rom_d(s: f32) -> [f32; 4] {
+    let s2 = s * s;
+    [
+        (-1.0 + 4.0 * s - 3.0 * s2) * 0.5,
+        (-10.0 * s + 9.0 * s2) * 0.5,
+        (1.0 + 8.0 * s - 9.0 * s2) * 0.5,
+        (3.0 * s2 - 2.0 * s) * 0.5,
+    ]
 }
 
-impl Displacements {
-    /// the ghost past `a` from the border nodes `a, b, c` (inward): quadratic, or linear without `c`
-    fn ghost(a: [f32; 2], b: [f32; 2], c: Option<[f32; 2]>) -> [f32; 2] {
-        match c {
-            Some(c) => [
-                3.0 * a[0] - 3.0 * b[0] + c[0],
-                3.0 * a[1] - 3.0 * b[1] + c[1],
-            ],
-            None => [2.0 * a[0] - b[0], 2.0 * a[1] - b[1]],
-        }
-    }
-
-    fn at(&self, i: isize, j: isize) -> [f32; 2] {
-        let n = self.n as isize;
-        let third = |k: isize| if n >= 3 { Some(k) } else { None };
-        if j < 0 {
-            return Self::ghost(
-                self.at(i, 0),
-                self.at(i, 1),
-                third(2).map(|k| self.at(i, k)),
-            );
-        }
-        if j >= n {
-            return Self::ghost(
-                self.at(i, n - 1),
-                self.at(i, n - 2),
-                third(n - 3).map(|k| self.at(i, k)),
-            );
-        }
-        if i < 0 {
-            return Self::ghost(
-                self.at(0, j),
-                self.at(1, j),
-                third(2).map(|k| self.at(k, j)),
-            );
-        }
-        if i >= n {
-            return Self::ghost(
-                self.at(n - 1, j),
-                self.at(n - 2, j),
-                third(n - 3).map(|k| self.at(k, j)),
-            );
-        }
-        self.d[j as usize * self.n + i as usize]
+/// The ghost past `a` from the border nodes `a, b, c` (inward): quadratic, or linear without `c`
+fn ghost(a: [f32; 2], b: [f32; 2], c: Option<[f32; 2]>) -> [f32; 2] {
+    match c {
+        Some(c) => [
+            3.0 * a[0] - 3.0 * b[0] + c[0],
+            3.0 * a[1] - 3.0 * b[1] + c[1],
+        ],
+        None => [2.0 * a[0] - b[0], 2.0 * a[1] - b[1]],
     }
 }
 
@@ -192,8 +169,340 @@ pub fn rest_lattice(n: usize) -> Result<Vec<[f32; 2]>, LatticeError> {
     Ok(out)
 }
 
-/// The triangles of one glyph's lattice mesh (see the module doc) for the nodes `positions` (`n * n`,
-/// in the order of [`rest_lattice`]) and the subdivision `k`
+/// How regular a lattice's map is: the Jacobian `J = I + d(displacement)/d(rest)` sampled at every
+/// sub-vertex of every cell (see [`GlyphLattice::regularity`])
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LatticeRegularity {
+    /// The smallest `det J`: at or below 0 the sheet is folded or a cell is inverted somewhere
+    pub min_jacobian: f32,
+    /// The largest stretch (largest singular value of `J`)
+    pub max_stretch: f32,
+    /// The smallest stretch (smallest singular value of `J`)
+    pub min_stretch: f32,
+}
+
+impl LatticeRegularity {
+    /// Whether the map folds or inverts somewhere (`det J <= 0` at a sample): where it does, the draw is
+    /// the defined result of the module doc (later triangle covers earlier; a pixel whose solve does not
+    /// converge in its own cell is not drawn), not a smooth inverse
+    #[must_use]
+    pub fn folded(&self) -> bool {
+        self.min_jacobian <= 0.0
+    }
+}
+
+/// One glyph's lattice: the displacements of its nodes padded with one ghost node on every side, and
+/// the mesh (see the module doc)
+#[derive(Debug, Clone, PartialEq)]
+pub struct GlyphLattice {
+    n: usize,
+    k: usize,
+    padded: Vec<[f32; 2]>,
+    triangles: Vec<LatticeTriangle>,
+}
+
+impl GlyphLattice {
+    /// The lattice for the nodes `positions` (`n * n`, in the order of [`rest_lattice`]) and the
+    /// subdivision `k`
+    ///
+    /// # Errors
+    /// A [`LatticeError`] when `n`, `k` or the positions are out of range
+    pub fn new(n: usize, k: usize, positions: &[[f32; 2]]) -> Result<Self, LatticeError> {
+        let rest = rest_lattice(n)?;
+        if !(1..=LATTICE_MAX_SUBDIVISION).contains(&k) {
+            return Err(LatticeError::Subdivision(k));
+        }
+        if positions.len() != n * n {
+            return Err(LatticeError::PositionCount {
+                expected: n * n,
+                got: positions.len(),
+            });
+        }
+        if let Some(node) = positions
+            .iter()
+            .position(|p| !(p[0].is_finite() && p[1].is_finite()))
+        {
+            return Err(LatticeError::NonFinite { node });
+        }
+        let d: Vec<[f32; 2]> = positions
+            .iter()
+            .zip(&rest)
+            .map(|(p, r)| [p[0] - r[0], p[1] - r[1]])
+            .collect();
+        let padded = pad(n, &d);
+        let mut lattice = Self {
+            n,
+            k,
+            padded,
+            triangles: Vec::new(),
+        };
+        lattice.triangles = lattice.mesh(positions);
+        Ok(lattice)
+    }
+
+    /// Nodes per side
+    #[must_use]
+    pub fn n(&self) -> usize {
+        self.n
+    }
+
+    /// Cell subdivision
+    #[must_use]
+    pub fn k(&self) -> usize {
+        self.k
+    }
+
+    /// The mesh, sub-quad by sub-quad from `v = 0` up, each row from `u = 0`, the lower triangle first
+    /// (the order the GPU draws them in, which decides which layer covers where the sheet overlaps)
+    #[must_use]
+    pub fn triangles(&self) -> &[LatticeTriangle] {
+        &self.triangles
+    }
+
+    /// The node displacements from rest with their ghosts: `(n + 2) x (n + 2)` values, row `j + 1` and
+    /// column `i + 1` holding node `(i, j)` (rows from `v = 0` up), the border rows and columns the ghosts;
+    /// the texture the fragment shader reads (`uDisp`)
+    #[must_use]
+    pub fn padded_displacements(&self) -> &[[f32; 2]] {
+        &self.padded
+    }
+
+    fn node(&self, pi: usize, pj: usize) -> [f32; 2] {
+        self.padded[pj * (self.n + 2) + pi]
+    }
+
+    /// The displacement in cell `(ci, cj)` at the cell parameters `(s, t)` and its derivatives in `s` and
+    /// `t`, summed in the order the fragment shader sums them
+    fn patch(&self, ci: usize, cj: usize, s: f32, t: f32) -> ([f32; 2], [f32; 2], [f32; 2]) {
+        let (ws, wt) = (catmull_rom(s), catmull_rom(t));
+        let (dws, dwt) = (catmull_rom_d(s), catmull_rom_d(t));
+        let mut d = [0.0f32; 2];
+        let mut ds = [0.0f32; 2];
+        let mut dt = [0.0f32; 2];
+        for y in 0..4 {
+            for x in 0..4 {
+                let p = self.node(ci + x, cj + y);
+                let w = ws[x] * wt[y];
+                let wu = dws[x] * wt[y];
+                let wv = ws[x] * dwt[y];
+                for c in 0..2 {
+                    d[c] += w * p[c];
+                    ds[c] += wu * p[c];
+                    dt[c] += wv * p[c];
+                }
+            }
+        }
+        (d, ds, dt)
+    }
+
+    fn mesh(&self, positions: &[[f32; 2]]) -> Vec<LatticeTriangle> {
+        let (n, k) = (self.n, self.k);
+        // the sub-vertex grid: m x m points, (m - 1) = (n - 1) k intervals per side
+        let m = (n - 1) * k + 1;
+        let last = (m - 1) as f32;
+        let kf = k as f32;
+        let mut grid = Vec::with_capacity(m * m);
+        for b in 0..m {
+            let cj = (b / k).min(n - 2);
+            let t = (b - cj * k) as f32 / kf;
+            for a in 0..m {
+                let ci = (a / k).min(n - 2);
+                let s = (a - ci * k) as f32 / kf;
+                let r = [a as f32 / last, b as f32 / last];
+                let deformed = if a % k == 0 && b % k == 0 {
+                    // a node: the position as given
+                    positions[(b / k) * n + a / k]
+                } else {
+                    let (d, _, _) = self.patch(ci, cj, s, t);
+                    [r[0] + d[0], r[1] + d[1]]
+                };
+                let out = |c: usize| -> f32 {
+                    if c == 0 {
+                        -1.0
+                    } else if c == m - 1 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                };
+                grid.push((deformed, r, [out(a), out(b)]));
+            }
+        }
+        let mut tris = Vec::with_capacity(2 * (m - 1) * (m - 1));
+        for b in 0..m - 1 {
+            for a in 0..m - 1 {
+                let cell = [(a / k) as u16, (b / k) as u16];
+                let tri = |p: [usize; 3]| LatticeTriangle {
+                    deformed: p.map(|i| grid[i].0),
+                    rest: p.map(|i| grid[i].1),
+                    outward: p.map(|i| grid[i].2),
+                    cell,
+                };
+                let v00 = b * m + a;
+                let v10 = v00 + 1;
+                let v01 = v00 + m;
+                let v11 = v01 + 1;
+                tris.push(tri([v00, v10, v11]));
+                tris.push(tri([v00, v11, v01]));
+            }
+        }
+        tris
+    }
+
+    /// The rest point of the glyph-box point `q` for a pixel `tri` covers, as the fragment shader computes
+    /// it (see the module doc): the triangle's barycentric map gives the first guess, then
+    /// [`LATTICE_NEWTON_STEPS`] Newton steps solve `c + disp(q + c) = 0` with the cell's Catmull-Rom patch;
+    /// `None` (the pixel is not drawn) when the triangle has no area, the residual is above
+    /// [`LATTICE_RESIDUAL_PX`] pixels (`px`: one pixel in the glyph's box coordinates), or the solution lies
+    /// outside the triangle's cell by more than half a sub-cell. At rest the result is `q` bit for bit
+    #[must_use]
+    pub fn rest_point(&self, tri: &LatticeTriangle, q: [f32; 2], px: [f32; 2]) -> Option<[f32; 2]> {
+        let (r, g) = self.newton(tri, q, LATTICE_NEWTON_STEPS)?;
+        if !(g[0].abs() <= LATTICE_RESIDUAL_PX * px[0] && g[1].abs() <= LATTICE_RESIDUAL_PX * px[1])
+        {
+            return None;
+        }
+        let h = 1.0 / (self.n - 1) as f32;
+        let o = [f32::from(tri.cell[0]) * h, f32::from(tri.cell[1]) * h];
+        let m = h / (2.0 * self.k as f32);
+        let inside = |x: f32, lo: f32| x >= lo - m && x <= lo + h + m;
+        (inside(r[0], o[0]) && inside(r[1], o[1])).then_some(r)
+    }
+
+    /// `steps` Newton steps of [`GlyphLattice::rest_point`] from the triangle's guess: the point and the
+    /// residual `c + disp(q + c)` there; `None` when the triangle has no area
+    fn newton(
+        &self,
+        tri: &LatticeTriangle,
+        q: [f32; 2],
+        steps: usize,
+    ) -> Option<([f32; 2], [f32; 2])> {
+        let from_d = carry(q, &tri.deformed, &tri.rest)?;
+        let from_r = carry(q, &tri.rest, &tri.rest)?;
+        let mut c = [from_d[0] - from_r[0], from_d[1] - from_r[1]];
+        let (ci, cj) = (usize::from(tri.cell[0]), usize::from(tri.cell[1]));
+        let h = 1.0 / (self.n - 1) as f32;
+        let o = [ci as f32 * h, cj as f32 * h];
+        for _ in 0..steps {
+            let r = [q[0] + c[0], q[1] + c[1]];
+            let (d, ds, dt) = self.patch(ci, cj, (r[0] - o[0]) / h, (r[1] - o[1]) / h);
+            let g = [c[0] + d[0], c[1] + d[1]];
+            // J = I + [d disp / du, d disp / dv], du = h ds
+            let a = 1.0 + ds[0] / h;
+            let b = dt[0] / h;
+            let e = ds[1] / h;
+            let f = 1.0 + dt[1] / h;
+            let det = a * f - b * e;
+            if det.abs() > 0.0 {
+                c[0] -= (f * g[0] - b * g[1]) / det;
+                c[1] -= (a * g[1] - e * g[0]) / det;
+            }
+        }
+        let r = [q[0] + c[0], q[1] + c[1]];
+        let (d, _, _) = self.patch(ci, cj, (r[0] - o[0]) / h, (r[1] - o[1]) / h);
+        Some((r, [c[0] + d[0], c[1] + d[1]]))
+    }
+
+    /// The Jacobian of the map sampled at every sub-vertex of every cell (see [`LatticeRegularity`])
+    #[must_use]
+    pub fn regularity(&self) -> LatticeRegularity {
+        let h = 1.0 / (self.n - 1) as f32;
+        let kf = self.k as f32;
+        let mut out = LatticeRegularity {
+            min_jacobian: f32::INFINITY,
+            max_stretch: 0.0,
+            min_stretch: f32::INFINITY,
+        };
+        for cj in 0..self.n - 1 {
+            for ci in 0..self.n - 1 {
+                for b in 0..=self.k {
+                    for a in 0..=self.k {
+                        let (_, ds, dt) = self.patch(ci, cj, a as f32 / kf, b as f32 / kf);
+                        let j = [[1.0 + ds[0] / h, dt[0] / h], [ds[1] / h, 1.0 + dt[1] / h]];
+                        let det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
+                        // singular values of a 2x2: sqrt((t +- sqrt(t^2 - 4 det^2)) / 2), t = |J|_F^2
+                        let fro = j[0][0] * j[0][0]
+                            + j[0][1] * j[0][1]
+                            + j[1][0] * j[1][0]
+                            + j[1][1] * j[1][1];
+                        let disc = fro * fro - 4.0 * det * det;
+                        let root = alice_det_math::ops::sqrt(if disc > 0.0 { disc } else { 0.0 });
+                        let hi = alice_det_math::ops::sqrt((fro + root) * 0.5);
+                        let low = fro - root;
+                        let lo = alice_det_math::ops::sqrt(if low > 0.0 { low * 0.5 } else { 0.0 });
+                        if det < out.min_jacobian {
+                            out.min_jacobian = det;
+                        }
+                        if hi > out.max_stretch {
+                            out.max_stretch = hi;
+                        }
+                        if lo < out.min_stretch {
+                            out.min_stretch = lo;
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+}
+
+fn cross2(a: [f32; 2], b: [f32; 2]) -> f32 {
+    a[0] * b[1] - a[1] * b[0]
+}
+
+/// The shader's `carry`: the point with the barycentric coordinates of `q` in `d`, taken in `r`; `None`
+/// when `d` has no area
+fn carry(q: [f32; 2], d: &[[f32; 2]; 3], r: &[[f32; 2]; 3]) -> Option<[f32; 2]> {
+    let [a, b, c] = *d;
+    let sub = |x: [f32; 2], y: [f32; 2]| [x[0] - y[0], x[1] - y[1]];
+    let den = cross2(sub(b, a), sub(c, a));
+    // no area, or not a number (both refuse the pixel, as the shader's `abs(den) > 0.0` does)
+    if den.abs() <= 0.0 || den.is_nan() {
+        return None;
+    }
+    let l1 = cross2(sub(q, a), sub(c, a)) / den;
+    let l2 = cross2(sub(b, a), sub(q, a)) / den;
+    let l0 = 1.0 - l1 - l2;
+    Some([
+        r[0][0] * l0 + r[1][0] * l1 + r[2][0] * l2,
+        r[0][1] * l0 + r[1][1] * l1 + r[2][1] * l2,
+    ])
+}
+
+/// The displacements `d` (`n x n`) with one ghost node on every side, `(n + 2)^2` values
+fn pad(n: usize, d: &[[f32; 2]]) -> Vec<[f32; 2]> {
+    let w = n + 2;
+    let mut p = vec![[0.0f32; 2]; w * w];
+    for j in 0..n {
+        for i in 0..n {
+            p[(j + 1) * w + i + 1] = d[j * n + i];
+        }
+    }
+    let third = n >= 3;
+    // ghost columns of the node rows, then ghost rows of every column (the corners from the ghost columns)
+    for j in 1..=n {
+        let row = |i: usize| p[j * w + i];
+        let (l, r) = (
+            ghost(row(1), row(2), third.then(|| row(3))),
+            ghost(row(n), row(n - 1), third.then(|| row(n - 2))),
+        );
+        p[j * w] = l;
+        p[j * w + n + 1] = r;
+    }
+    for i in 0..w {
+        let col = |j: usize| p[j * w + i];
+        let (b, t) = (
+            ghost(col(1), col(2), third.then(|| col(3))),
+            ghost(col(n), col(n - 1), third.then(|| col(n - 2))),
+        );
+        p[i] = b;
+        p[(n + 1) * w + i] = t;
+    }
+    p
+}
+
+/// The triangles of one glyph's lattice mesh ([`GlyphLattice::new`] then [`GlyphLattice::triangles`])
 ///
 /// # Errors
 /// A [`LatticeError`] when `n`, `k` or the positions are out of range
@@ -202,91 +511,7 @@ pub fn lattice_triangles(
     k: usize,
     positions: &[[f32; 2]],
 ) -> Result<Vec<LatticeTriangle>, LatticeError> {
-    let rest = rest_lattice(n)?;
-    if !(1..=LATTICE_MAX_SUBDIVISION).contains(&k) {
-        return Err(LatticeError::Subdivision(k));
-    }
-    if positions.len() != n * n {
-        return Err(LatticeError::PositionCount {
-            expected: n * n,
-            got: positions.len(),
-        });
-    }
-    if let Some(node) = positions
-        .iter()
-        .position(|p| !(p[0].is_finite() && p[1].is_finite()))
-    {
-        return Err(LatticeError::NonFinite { node });
-    }
-    let disp = Displacements {
-        n,
-        d: positions
-            .iter()
-            .zip(&rest)
-            .map(|(p, r)| [p[0] - r[0], p[1] - r[1]])
-            .collect(),
-    };
-    // the sub-vertex grid: m x m points, (m - 1) = (n - 1) k intervals per side
-    let m = (n - 1) * k + 1;
-    let last = (m - 1) as f32;
-    let kf = k as f32;
-    let mut grid = Vec::with_capacity(m * m);
-    for b in 0..m {
-        let cj = (b / k).min(n - 2);
-        let t = (b - cj * k) as f32 / kf;
-        let wt = catmull_rom(t);
-        for a in 0..m {
-            let ci = (a / k).min(n - 2);
-            let s = (a - ci * k) as f32 / kf;
-            let r = [a as f32 / last, b as f32 / last];
-            let on_node_u = a % k == 0;
-            let on_node_v = b % k == 0;
-            let deformed = if on_node_u && on_node_v {
-                // a node: the position as given
-                positions[(b / k) * n + a / k]
-            } else {
-                let ws = catmull_rom(s);
-                let mut acc = [0.0f32; 2];
-                for (y, wy) in wt.iter().enumerate() {
-                    for (x, wx) in ws.iter().enumerate() {
-                        let dd =
-                            disp.at(ci as isize + x as isize - 1, cj as isize + y as isize - 1);
-                        let w = wx * wy;
-                        acc[0] += w * dd[0];
-                        acc[1] += w * dd[1];
-                    }
-                }
-                [r[0] + acc[0], r[1] + acc[1]]
-            };
-            let out = |c: usize| -> f32 {
-                if c == 0 {
-                    -1.0
-                } else if c == m - 1 {
-                    1.0
-                } else {
-                    0.0
-                }
-            };
-            grid.push((deformed, r, [out(a), out(b)]));
-        }
-    }
-    let mut tris = Vec::with_capacity(2 * (m - 1) * (m - 1));
-    let tri = |p: [usize; 3]| LatticeTriangle {
-        deformed: p.map(|i| grid[i].0),
-        rest: p.map(|i| grid[i].1),
-        outward: p.map(|i| grid[i].2),
-    };
-    for b in 0..m - 1 {
-        for a in 0..m - 1 {
-            let v00 = b * m + a;
-            let v10 = v00 + 1;
-            let v01 = v00 + m;
-            let v11 = v01 + 1;
-            tris.push(tri([v00, v10, v11]));
-            tris.push(tri([v00, v11, v01]));
-        }
-    }
-    Ok(tris)
+    Ok(GlyphLattice::new(n, k, positions)?.triangles)
 }
 
 /// Append the vertices of `triangles` for the glyph in `slot` of its chunk to `out`
@@ -307,6 +532,8 @@ pub fn lattice_vertices(
         for which in 0..3 {
             out.push(slot as f32);
             out.push(which as f32);
+            out.push(f32::from(t.cell[0]));
+            out.push(f32::from(t.cell[1]));
             for p in t.deformed.iter().chain(&t.rest).chain(&t.outward) {
                 out.extend_from_slice(p);
             }
@@ -512,6 +739,7 @@ mod tests {
             deformed: [[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
             rest: [[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
             outward: [[-1.0, 0.0], [1.0, 1.0], [0.0, -1.0]],
+            cell: [3, 5],
         };
         let mut out = vec![99.0];
         lattice_vertices(2, &[t], &mut out).unwrap();
@@ -525,7 +753,8 @@ mod tests {
                 &out[1 + which * LATTICE_VERTEX_FLOATS..1 + (which + 1) * LATTICE_VERTEX_FLOATS];
             assert_eq!(v[0], 2.0, "slot");
             assert_eq!(v[1], which as f32, "which vertex");
-            assert_eq!(&v[2..], &body[..]);
+            assert_eq!((v[2], v[3]), (3.0, 5.0), "cell");
+            assert_eq!(&v[4..], &body[..]);
         }
     }
 
@@ -663,7 +892,14 @@ mod tests {
             assert!(MULTI_OUTLINE_FRAG_GLSL.contains(line), "plain: {line}");
             assert!(LATTICE_OUTLINE_FRAG_GLSL.contains(line), "lattice: {line}");
         }
-        assert!(LATTICE_OUTLINE_FRAG_GLSL.contains("vec2 rest = q + (fromD - fromR);"));
+        assert!(LATTICE_OUTLINE_FRAG_GLSL.contains("vec2 rest = q + c;"));
+        assert!(LATTICE_OUTLINE_FRAG_GLSL.contains(&alloc::format!(
+            "const int NEWTON_STEPS = {LATTICE_NEWTON_STEPS};"
+        )));
+        assert_eq!(LATTICE_RESIDUAL_PX, 0.015_625);
+        assert!(LATTICE_OUTLINE_FRAG_GLSL.contains("const float RESIDUAL_PX = 0.015625;"));
+        // the loop's trip count is the literal, not data
+        assert!(LATTICE_OUTLINE_FRAG_GLSL.contains("for (int it = 0; it < NEWTON_STEPS; it++)"));
         for src in [LATTICE_OUTLINE_VERT_GLSL, LATTICE_OUTLINE_FRAG_GLSL] {
             assert!(src.starts_with("#version 300 es"));
             assert!(src.contains("layout(std140) uniform MultiOutlineBlock"));
@@ -689,11 +925,368 @@ mod tests {
             block(LATTICE_OUTLINE_FRAG_GLSL),
             block(MULTI_OUTLINE_FRAG_GLSL)
         );
+        assert!(LATTICE_OUTLINE_VERT_GLSL.contains("in vec4 aSlot;"));
         for attr in ["aSlot", "aD01", "aD2R0", "aR12", "aO01", "aO2"] {
             assert!(
                 LATTICE_OUTLINE_VERT_GLSL.contains(&alloc::format!(" {attr};")),
                 "{attr}"
             );
         }
+    }
+
+    const PX: [f32; 2] = [0.01, 0.01];
+
+    fn lattice_of(n: usize, k: usize, f: impl Fn([f32; 2]) -> [f32; 2]) -> GlyphLattice {
+        let pos: Vec<[f32; 2]> = rest_lattice(n).unwrap().into_iter().map(f).collect();
+        GlyphLattice::new(n, k, &pos).unwrap()
+    }
+
+    /// points inside the deformed triangle (fixed barycentric mixes, the vertices included)
+    fn points_in(t: &LatticeTriangle) -> Vec<[f32; 2]> {
+        let mix = [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0],
+            [0.2, 0.3, 0.5],
+            [0.6, 0.2, 0.2],
+            [0.1, 0.1, 0.8],
+            [0.5, 0.5, 0.0],
+        ];
+        mix.iter()
+            .map(|l: &[f32; 3]| {
+                [0, 1].map(|c| {
+                    l[0] * t.deformed[0][c] + l[1] * t.deformed[1][c] + l[2] * t.deformed[2][c]
+                })
+            })
+            .collect()
+    }
+
+    // oracle: at rest every displacement is 0, so the solve leaves c = 0 and the rest point is q bit for bit
+    #[test]
+    fn at_rest_the_rest_point_is_the_pixel_point_bit_for_bit() {
+        let mut compared = 0;
+        for (n, k) in [(2, 1), (4, 3), (5, 2)] {
+            let l = lattice_of(n, k, |p| p);
+            for t in l.triangles() {
+                for q in points_in(t) {
+                    let r = l.rest_point(t, q, PX).expect("drawn at rest");
+                    assert_eq!(
+                        r.map(f32::to_bits),
+                        q.map(f32::to_bits),
+                        "n {n} k {k} q {q:?}"
+                    );
+                    compared += 1;
+                }
+            }
+        }
+        assert!(compared > 500, "{compared}");
+    }
+
+    fn affine(p: [f32; 2]) -> [f32; 2] {
+        [
+            0.8 * p[0] - 0.3 * p[1] + 0.12,
+            0.25 * p[0] + 0.9 * p[1] + 0.04,
+        ]
+    }
+
+    /// the closed-form inverse of `affine`
+    fn affine_inv(q: [f32; 2]) -> [f64; 2] {
+        let (a, b, c, d) = (0.8_f64, -0.3, 0.25, 0.9);
+        let det = a * d - b * c;
+        let x = f64::from(q[0]) - 0.12;
+        let y = f64::from(q[1]) - 0.04;
+        [(d * x - b * y) / det, (-c * x + a * y) / det]
+    }
+
+    // oracle (closed form): an affine move makes the equation linear, so one Newton step from any guess
+    // solves it; the result is the inverse map
+    #[test]
+    fn an_affine_move_is_solved_in_one_newton_step() {
+        for (n, k) in [(2, 1), (4, 2)] {
+            let l = lattice_of(n, k, affine);
+            for t in l.triangles() {
+                for q in points_in(t) {
+                    let want = affine_inv(q);
+                    let (r, _) = l.newton(t, q, 1).unwrap();
+                    for c in 0..2 {
+                        assert!(
+                            (f64::from(r[c]) - want[c]).abs() < 2e-6,
+                            "n {n} k {k}: {r:?} vs {want:?}"
+                        );
+                    }
+                    assert!(l.rest_point(t, q, PX).is_some());
+                }
+            }
+        }
+    }
+
+    fn quad_bend(p: [f32; 2]) -> [f32; 2] {
+        let s = p[1] - 0.5;
+        [p[0] + 0.5 * s * s, p[1]]
+    }
+
+    // oracle (closed form): the quadratic bend is reproduced by the patches, so its inverse is
+    // (x - 0.5 (y - 0.5)^2, y); every triangle that accepts q (not only the one that holds it) returns it,
+    // so the value does not depend on which triangle a rasterizer gave the pixel to
+    #[test]
+    fn a_bend_is_inverted_exactly_by_any_triangle_that_accepts_the_pixel() {
+        for (n, k) in [(4, 1), (4, 3), (6, 2)] {
+            let l = lattice_of(n, k, quad_bend);
+            let mut accepted = 0;
+            for t in l.triangles() {
+                for q in points_in(t) {
+                    let y = f64::from(q[1]);
+                    let want = [f64::from(q[0]) - 0.5 * (y - 0.5) * (y - 0.5), y];
+                    for other in l.triangles() {
+                        if let Some(r) = l.rest_point(other, q, PX) {
+                            for c in 0..2 {
+                                assert!(
+                                    (f64::from(r[c]) - want[c]).abs() < 2e-6,
+                                    "n {n} k {k} q {q:?}: {r:?} vs {want:?}"
+                                );
+                            }
+                            accepted += 1;
+                        }
+                    }
+                    assert!(
+                        l.rest_point(t, q, PX).is_some(),
+                        "n {n} k {k} q {q:?}: its own triangle refused"
+                    );
+                }
+            }
+            assert!(accepted > 100, "{accepted}");
+        }
+    }
+
+    fn cubic(p: [f32; 2]) -> [f32; 2] {
+        let (u, v) = (p[0] - 0.5, p[1] - 0.5);
+        [
+            p[0] + 0.4 * v * v * v + 0.2 * u * u * u,
+            p[1] + 0.1 * p[0] * p[0] * p[0],
+        ]
+    }
+
+    // condition across a cell boundary: under a cubic (not reproduced, so the two cells' patches are
+    // different polynomials), at a point of a shared cell edge both patches have the same value and slope
+    // (Catmull-Rom is C1), so the pixel there, and a pixel a distance e off it, is solved by a triangle of
+    // either cell to the same rest point within 1e-6 for e = 0 and within 4 e^2 for e > 0 (the patches
+    // differ from second order). A rasterizer only gives a pixel to the other cell's triangle within its
+    // edge precision of the edge (about 1e-5 of the glyph box at 100 px per em)
+    #[test]
+    fn the_two_cells_at_a_shared_edge_give_the_same_rest_point() {
+        let (n, k) = (4, 2);
+        let l = lattice_of(n, k, cubic);
+        let h = 1.0 / (n - 1) as f32;
+        let mut compared = 0;
+        let mut table = Vec::new();
+        for e in [0.0_f32, 1e-5, 1e-4, 1e-3] {
+            let mut worst = 0.0f32;
+            for t in l.triangles() {
+                for v in 0..3 {
+                    let r = t.rest[v];
+                    // a vertex on a vertical cell edge inside the lattice
+                    let edge = (r[0] / h).round();
+                    if (r[0] - edge * h).abs() > 1e-6 || edge < 1.0 || edge > (n - 2) as f32 {
+                        continue;
+                    }
+                    let q = [t.deformed[v][0] + e, t.deformed[v][1]];
+                    // the triangles touching this vertex, on both sides of the edge
+                    let around: Vec<&LatticeTriangle> = l
+                        .triangles()
+                        .iter()
+                        .filter(|o| o.rest.contains(&r))
+                        .collect();
+                    let sols: Vec<[f32; 2]> = around
+                        .iter()
+                        .filter_map(|o| l.rest_point(o, q, PX))
+                        .collect();
+                    let cells: Vec<u16> = around.iter().map(|o| o.cell[0]).collect();
+                    assert!(
+                        cells.iter().any(|&c| f32::from(c) < edge)
+                            && cells.iter().any(|&c| f32::from(c) >= edge)
+                    );
+                    for a in &sols {
+                        for b in &sols {
+                            worst = worst.max((a[0] - b[0]).abs().max((a[1] - b[1]).abs()));
+                            compared += 1;
+                        }
+                    }
+                }
+            }
+            #[cfg(feature = "std")]
+            std::eprintln!("cell boundary: offset {e:e}, largest difference {worst:e}");
+            table.push((e, worst));
+        }
+        assert!(compared > 100, "pairs {compared}");
+        for (e, worst) in table {
+            assert!(
+                worst <= 1e-6 + 4.0 * e * e,
+                "offset {e}: difference {worst}"
+            );
+        }
+    }
+
+    /// the Newton steps a point needs to bring its residual to 1e-6 of the glyph box
+    fn steps_needed(l: &GlyphLattice, t: &LatticeTriangle, q: [f32; 2]) -> usize {
+        (0..=12)
+            .find(|&s| {
+                l.newton(t, q, s)
+                    .is_some_and(|(_, g)| g[0].abs() <= 1e-6 && g[1].abs() <= 1e-6)
+            })
+            .unwrap_or(99)
+    }
+
+    // the measured table of steps against strain; every regular case (det J > 0) converges within the
+    // literal step count
+    #[test]
+    fn newton_converges_within_the_step_count_for_regular_lattices() {
+        type Case = (&'static str, fn([f32; 2]) -> [f32; 2]);
+        let cases: [Case; 9] = [
+            ("rest", |p| p),
+            ("stretch 1.5", |p| [1.5 * p[0], p[1]]),
+            ("stretch 4", |p| [4.0 * p[0], p[1]]),
+            ("squeeze 0.25", |p| [0.25 * p[0], p[1]]),
+            ("shear 1", |p| [p[0] + p[1], p[1]]),
+            ("bend 0.5", quad_bend),
+            ("bend 1.5", |p| {
+                [p[0] + 1.5 * (p[1] - 0.5) * (p[1] - 0.5), p[1]]
+            }),
+            ("cubic", cubic),
+            ("bulge", |p| {
+                let (u, v) = (p[0] - 0.5, p[1] - 0.5);
+                let s = 1.0 + 0.6 * (0.25 - u * u - v * v);
+                [0.5 + u * s, 0.5 + v * s]
+            }),
+        ];
+        for (name, f) in cases {
+            for k in [1, 4] {
+                let l = lattice_of(5, k, f);
+                let reg = l.regularity();
+                let mut worst = 0;
+                for t in l.triangles() {
+                    for q in points_in(t) {
+                        worst = worst.max(steps_needed(&l, t, q));
+                    }
+                }
+                #[cfg(feature = "std")]
+                std::eprintln!(
+                    "steps | {name} k {k} | min det {:.3} | stretch {:.3}..{:.3} | worst steps {worst}",
+                    reg.min_jacobian, reg.min_stretch, reg.max_stretch
+                );
+                assert!(!reg.folded(), "{name}: regular");
+                assert!(worst <= LATTICE_NEWTON_STEPS, "{name} k {k}: {worst} steps");
+            }
+        }
+    }
+
+    // a folded sheet (the top row put back below the middle row): the regularity says so, and every pixel
+    // the solve draws is a preimage in its own cell; where the two layers overlap, a triangle of each layer
+    // draws its own layer (the later one covers the earlier on the GPU, by draw order)
+    #[test]
+    fn a_folded_sheet_draws_each_layer_from_its_own_cells() {
+        let n = 3;
+        let pos: Vec<[f32; 2]> = rest_lattice(n)
+            .unwrap()
+            .into_iter()
+            .map(|[u, v]| {
+                [
+                    u,
+                    if v > 0.75 {
+                        0.2
+                    } else if v > 0.25 {
+                        0.6
+                    } else {
+                        0.0
+                    },
+                ]
+            })
+            .collect();
+        let l = GlyphLattice::new(n, 4, &pos).unwrap();
+        assert!(l.regularity().folded(), "{:?}", l.regularity());
+        let mut two_layers = 0;
+        for t in l.triangles() {
+            for q in points_in(t) {
+                let mut rows = Vec::new();
+                for o in l.triangles() {
+                    if let Some(r) = l.rest_point(o, q, PX) {
+                        // within its cell (+- half a sub-cell)
+                        let h = 0.5;
+                        let lo = f32::from(o.cell[1]) * h - h / 8.0;
+                        assert!(
+                            r[1] >= lo && r[1] <= lo + h + h / 4.0,
+                            "{r:?} outside cell {:?}",
+                            o.cell
+                        );
+                        rows.push(o.cell[1]);
+                    }
+                }
+                if rows.contains(&0) && rows.contains(&1) {
+                    two_layers += 1;
+                }
+            }
+        }
+        assert!(two_layers > 0, "no point where both layers draw");
+    }
+
+    // oracle (closed form): a mirrored lattice (x -> 1 - x) is inverted everywhere (det J = -1): it is
+    // reported as folded, and the solve draws the mirror image, (1 - x, y)
+    #[test]
+    fn a_mirrored_lattice_is_reported_and_draws_the_mirror_image() {
+        let l = lattice_of(4, 2, |p| [1.0 - p[0], p[1]]);
+        let reg = l.regularity();
+        assert!(reg.folded());
+        assert!((reg.min_jacobian + 1.0).abs() < 1e-5, "{reg:?}");
+        for t in l.triangles() {
+            for q in points_in(t) {
+                let r = l.rest_point(t, q, PX).expect("drawn");
+                assert!(
+                    (r[0] - (1.0 - q[0])).abs() < 2e-6 && (r[1] - q[1]).abs() < 2e-6,
+                    "{q:?} {r:?}"
+                );
+            }
+        }
+    }
+
+    // oracle: the identity has J = I everywhere; an affine map has J = A everywhere
+    #[test]
+    fn regularity_is_the_jacobian_of_the_map() {
+        let rest = lattice_of(4, 3, |p| p).regularity();
+        assert_eq!(
+            (rest.min_jacobian, rest.min_stretch, rest.max_stretch),
+            (1.0, 1.0, 1.0)
+        );
+        let a = lattice_of(4, 3, affine).regularity();
+        assert!(
+            (a.min_jacobian - (0.8 * 0.9 + 0.3 * 0.25)).abs() < 1e-5,
+            "{a:?}"
+        );
+        assert!(!a.folded());
+    }
+
+    // a triangle with no area draws nothing; a solve that is not given the steps it needs leaves a residual
+    // above the threshold (the check is what refuses an unconverged pixel)
+    #[test]
+    fn a_degenerate_triangle_or_an_unconverged_solve_is_not_drawn() {
+        let l = lattice_of(3, 1, |p| p);
+        let mut t = l.triangles()[0];
+        t.deformed = [[0.2, 0.2]; 3];
+        assert_eq!(l.rest_point(&t, [0.2, 0.2], PX), None);
+        let bent = lattice_of(4, 1, |p| [p[0] + 1.5 * (p[1] - 0.5) * (p[1] - 0.5), p[1]]);
+        let mut over = 0;
+        for t in bent.triangles() {
+            for q in points_in(t) {
+                let (_, g) = bent.newton(t, q, 0).unwrap();
+                if g[0].abs() > LATTICE_RESIDUAL_PX * PX[0]
+                    || g[1].abs() > LATTICE_RESIDUAL_PX * PX[1]
+                {
+                    over += 1;
+                }
+            }
+        }
+        assert!(
+            over > 0,
+            "the first guess alone is within the threshold everywhere"
+        );
     }
 }
