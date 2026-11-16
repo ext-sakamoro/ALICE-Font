@@ -1289,4 +1289,30 @@ mod tests {
             "the first guess alone is within the threshold everywhere"
         );
     }
+
+    // the residual threshold is in pixels: with a pixel of 1e-12 of the glyph box nothing but an exact
+    // solve is drawn, so a bent lattice refuses a pixel its f32 solve cannot hit exactly, and the rest
+    // lattice (residual exactly 0) still draws every pixel
+    #[test]
+    fn the_residual_threshold_is_measured_in_pixels() {
+        let tiny = [1e-12_f32, 1e-12];
+        let rest = lattice_of(4, 2, |p| p);
+        let bent = lattice_of(4, 2, cubic);
+        let mut refused = 0;
+        for (tr, tb) in rest.triangles().iter().zip(bent.triangles()) {
+            for q in points_in(tr) {
+                assert!(rest.rest_point(tr, q, tiny).is_some(), "rest refused {q:?}");
+            }
+            for q in points_in(tb) {
+                if bent.rest_point(tb, q, tiny).is_none() {
+                    refused += 1;
+                }
+                assert!(
+                    bent.rest_point(tb, q, PX).is_some(),
+                    "a pixel of 0.01 refused {q:?}"
+                );
+            }
+        }
+        assert!(refused > 0, "no pixel refused at a threshold of 1e-12");
+    }
 }
