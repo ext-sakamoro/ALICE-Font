@@ -2,26 +2,40 @@
 //!
 //! A glyph's box (u across its advance, v up the em box, both `0..1`) carries an `n x n` lattice of
 //! nodes; the caller moves the nodes ([`rest_lattice`] gives them at rest) and the glyph is drawn
-//! deformed with them. The outline is still the bezier outline evaluated per pixel (no texture): each
-//! pixel is mapped back to the rest glyph through the triangle of the deformed mesh it lies in, and the
-//! plain shader's evaluation runs at that rest point ([`LATTICE_OUTLINE_VERT_GLSL`] /
-//! [`LATTICE_OUTLINE_FRAG_GLSL`], same uniform block as [`super::MULTI_OUTLINE_VERT_GLSL`]).
+//! deformed with them. The outline is still the bezier outline evaluated per pixel (no texture)
+//! ([`LATTICE_OUTLINE_VERT_GLSL`] / [`LATTICE_OUTLINE_FRAG_GLSL`], same uniform block as
+//! [`super::MULTI_OUTLINE_VERT_GLSL`]; [`GlyphLattice::rest_point`] is the per-pixel computation on the CPU).
 //!
-//! The mesh ([`lattice_triangles`]): every lattice cell is split `k x k`. A sub-vertex lies at its rest
-//! point plus the Catmull-Rom (bicubic, through the nodes) interpolation of the nodes' displacements
-//! from rest; past the lattice's border a ghost node continues the border quadratically (`d(-1) =
-//! 3 d(0) - 3 d(1) + d(2)`; linearly, `2 d(0) - d(1)`, when `n = 2`). Each sub-quad is cut along its
-//! diagonal from `(a, b)` to `(a + 1, b + 1)` into the triangles `(a,b) (a+1,b) (a+1,b+1)` and
-//! `(a,b) (a+1,b+1) (a,b+1)`, counter-clockwise in `(u, v)`. Hence:
-//! - at rest every displacement is exactly 0 and every deformed vertex equals its rest vertex bit for
-//!   bit, so the draw is the plain draw of the same text;
-//! - Catmull-Rom reproduces quadratics and the ghosts continue them, so an affine move of the nodes moves
-//!   every sub-vertex by the same affine map, and a move quadratic in u and v (with `n >= 3`) puts every
-//!   sub-vertex on it (up to rounding);
-//! - a node is a vertex of the mesh at exactly the position given;
-//! - `k = 1` gives one piecewise-affine map per triangle of the lattice itself (creases along the cell
-//!   edges and diagonals under a bend); a larger `k` follows the smooth interpolant more closely, at
-//!   `2 (n - 1)^2 k^2` triangles per glyph.
+//! The map: the deformation is the Catmull-Rom (bicubic, through the nodes) interpolation of the nodes'
+//! displacements from rest, `x = r + disp(r)`; past the lattice's border a ghost node continues the
+//! border quadratically (`d(-1) = 3 d(0) - 3 d(1) + d(2)`; linearly, `2 d(0) - d(1)`, when `n = 2`). It is
+//! C1 across cells, reproduces affine maps, and reproduces quadratics when `n >= 3`.
+//!
+//! A pixel: its glyph-box point `q` is computed as the plain shader computes it; its rest point solves
+//! `r + disp(r) = q` in the cell of the triangle that covers the pixel, by [`LATTICE_NEWTON_STEPS`] Newton
+//! steps (a literal; the triangle's barycentric map gives the first guess). The result does not depend on
+//! which triangle a rasterizer gave the pixel to (the two cells at a shared edge agree to rounding), and:
+//! - at rest the displacement is exactly 0 and the rest point is `q` bit for bit: the draw is the plain
+//!   draw of the same text;
+//! - an affine move is solved exactly in one step;
+//! - a pixel is not drawn when its residual after the steps is above [`LATTICE_RESIDUAL_PX`] pixels, or
+//!   when the solution lies outside the triangle's cell by more than half a sub-cell (the solve went to
+//!   another layer of a folded sheet): a deformation the solve cannot follow shows a hole, not a wrong
+//!   colour;
+//! - where the sheet overlaps itself, each layer is drawn from its own cells and the later triangle in
+//!   mesh order covers the earlier (the sheet is opaque: a covering layer hides what is under it, ink or
+//!   not); an inverted cell draws the mirror image.
+//!
+//! [`GlyphLattice::regularity`] reports the Jacobian of the map (`det J <= 0`: folded or inverted
+//! somewhere), the caller's measure of how hard the lattice is deformed.
+//!
+//! The mesh ([`GlyphLattice::triangles`]): every lattice cell is split `k x k`, a sub-vertex at its rest
+//! point plus the displacement there (a node at exactly the position given), each sub-quad cut along its
+//! diagonal from `(a, b)` to `(a + 1, b + 1)` into `(a,b) (a+1,b) (a+1,b+1)` and `(a,b) (a+1,b+1) (a,b+1)`.
+//! The mesh decides which pixels are covered and gives the first guess; `k` trades `2 (n - 1)^2 k^2`
+//! triangles per glyph against how closely the coverage follows the sheet and how good the first guess
+//! is. Measured on recorded soft-body states (a hard fast drag, a sheet folded and stuck): with `k = 4`
+//! at most 0.04 % of the covered pixels are left undrawn, with `k = 1` up to 3.3 %.
 //!
 //! Author: Moroya Sakamoto
 
@@ -54,6 +68,10 @@ pub const LATTICE_NEWTON_STEPS: usize = 4;
 
 /// The largest residual, in pixels, a pixel's solve may leave and still be drawn
 pub const LATTICE_RESIDUAL_PX: f32 = 1.0 / 64.0;
+
+/// Intervals per cell side at which [`GlyphLattice::regularity`] samples the Jacobian (a property of the
+/// lattice, not of the mesh's subdivision)
+pub const LATTICE_REGULARITY_SAMPLES: usize = 8;
 
 /// The most nodes along one side of a glyph's lattice
 pub const LATTICE_MAX_NODES_PER_SIDE: usize = 64;
@@ -171,8 +189,8 @@ pub fn rest_lattice(n: usize) -> Result<Vec<[f32; 2]>, LatticeError> {
     Ok(out)
 }
 
-/// How regular a lattice's map is: the Jacobian `J = I + d(displacement)/d(rest)` sampled at every
-/// sub-vertex of every cell (see [`GlyphLattice::regularity`])
+/// How regular a lattice's map is: the Jacobian `J = I + d(displacement)/d(rest)` sampled on a fixed
+/// grid of [`LATTICE_REGULARITY_SAMPLES`] intervals per cell side (see [`GlyphLattice::regularity`])
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LatticeRegularity {
     /// The smallest `det J`: at or below 0 the sheet is folded or a cell is inverted somewhere
@@ -405,11 +423,12 @@ impl GlyphLattice {
         Some((r, [c[0] + d[0], c[1] + d[1]]))
     }
 
-    /// The Jacobian of the map sampled at every sub-vertex of every cell (see [`LatticeRegularity`])
+    /// The Jacobian of the map sampled on [`LATTICE_REGULARITY_SAMPLES`] intervals per cell side, the
+    /// same for every `k` (see [`LatticeRegularity`])
     #[must_use]
     pub fn regularity(&self) -> LatticeRegularity {
         let h = 1.0 / (self.n - 1) as f32;
-        let kf = self.k as f32;
+        let kf = LATTICE_REGULARITY_SAMPLES as f32;
         let mut out = LatticeRegularity {
             min_jacobian: f32::INFINITY,
             max_stretch: 0.0,
@@ -417,8 +436,8 @@ impl GlyphLattice {
         };
         for cj in 0..self.n - 1 {
             for ci in 0..self.n - 1 {
-                for b in 0..=self.k {
-                    for a in 0..=self.k {
+                for b in 0..=LATTICE_REGULARITY_SAMPLES {
+                    for a in 0..=LATTICE_REGULARITY_SAMPLES {
                         let (_, ds, dt) = self.patch(ci, cj, a as f32 / kf, b as f32 / kf);
                         let j = [[1.0 + ds[0] / h, dt[0] / h], [ds[1] / h, 1.0 + dt[1] / h]];
                         let det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
@@ -1316,5 +1335,55 @@ mod tests {
             }
         }
         assert!(refused > 0, "no pixel refused at a threshold of 1e-12");
+    }
+
+    // regularity is a property of the lattice, not of the subdivision: a recorded soft-body state (a sheet
+    // dragged and released until it folded, 4 x 4 nodes) is reported folded for every k, and with the same
+    // numbers (k = 1 sampled at the sub-vertices alone saw det J 0.04 where k = 4 saw -1.17)
+    #[test]
+    fn regularity_does_not_depend_on_the_subdivision() {
+        let v: [f32; 32] = [
+            0.7853771,
+            0.39657566,
+            0.99272215,
+            0.6486059,
+            0.926314,
+            0.3099659,
+            1.2446197,
+            0.32582003,
+            0.5301565,
+            0.5996639,
+            0.72532004,
+            0.8606071,
+            0.8194969,
+            0.5484488,
+            1.151309,
+            0.635547,
+            0.15493701,
+            0.6861848,
+            0.45086133,
+            0.8175874,
+            0.7414651,
+            0.8828341,
+            1.0681843,
+            0.9606719,
+            0.020235322,
+            0.99092907,
+            0.3364653,
+            1.1229175,
+            0.6639094,
+            1.2036088,
+            0.9873873,
+            1.2840649,
+        ];
+        let pos: Vec<[f32; 2]> = v.chunks_exact(2).map(|p| [p[0], p[1]]).collect();
+        let regs: Vec<LatticeRegularity> = [1, 2, 4, 8]
+            .iter()
+            .map(|&k| GlyphLattice::new(4, k, &pos).unwrap().regularity())
+            .collect();
+        assert!(regs[0].folded(), "{:?}", regs[0]);
+        for r in &regs[1..] {
+            assert_eq!(r, &regs[0]);
+        }
     }
 }
