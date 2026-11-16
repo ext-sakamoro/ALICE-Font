@@ -9,7 +9,9 @@
 // triangle), then NEWTON_STEPS Newton steps (a literal). The pixel is not drawn when the residual is above
 // RESIDUAL_PX pixels or r lies outside the cell by more than half a sub-cell (a fold: the solve went to
 // another layer of the sheet). At rest disp is 0 and both products are the same expression of the same
-// numbers: c is exactly 0 and the pixel is evaluated at q, as the plain path does. Outside the glyph box
+// numbers: c is exactly 0 and the pixel is evaluated at q, as the plain path does. The fragment's depth
+// is 1 - coverage: drawn with a LEQUAL depth test, the fragment with the most ink wins a pixel where
+// layers of a folded sheet or glyphs overlap (ink is not covered by another layer's empty area). Outside the glyph box
 // (in rest coordinates) the pixel is discarded, as the plain path does. The outline evaluation below the
 // rest point is the plain shader's, byte for byte (a test in `outline::lattice` keeps the two copies equal),
 // and `outline::lattice::GlyphLattice::rest_point` is this computation on the CPU.
@@ -261,4 +263,8 @@ void main() {
     float sd = (wn != 0) ? -minDist : minDist;
     float coverage = 1.0 - smoothstep(-uAntiAlias, uAntiAlias, sd);
     fragColor = mix(uBgColor, uFgColor, coverage);
+    // the most ink wins where layers or glyphs overlap: depth 1 - coverage under a LEQUAL test keeps the
+    // fragment of the largest coverage (the colour is a function of coverage alone, so equal coverages give
+    // the same colour and the draw order does not matter)
+    gl_FragDepth = 1.0 - coverage;
 }

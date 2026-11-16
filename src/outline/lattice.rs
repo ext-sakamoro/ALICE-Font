@@ -22,9 +22,13 @@
 //!   when the solution lies outside the triangle's cell by more than half a sub-cell (the solve went to
 //!   another layer of a folded sheet): a deformation the solve cannot follow shows a hole, not a wrong
 //!   colour;
-//! - where the sheet overlaps itself, each layer is drawn from its own cells and the later triangle in
-//!   mesh order covers the earlier (the sheet is opaque: a covering layer hides what is under it, ink or
-//!   not); an inverted cell draws the mirror image.
+//! - where the sheet overlaps itself (or glyphs overlap), each layer is drawn from its own cells and the
+//!   pixel shows the most ink of all layers: the fragment shader writes depth `1 - coverage` for a
+//!   `LEQUAL` depth test (the draw needs a depth buffer), so the operator is the maximum of coverage, free
+//!   of draw order; an inverted cell draws the mirror image. The colour is a function of coverage alone,
+//!   which is what makes equal coverages give equal bytes: a per-layer or per-glyph colour would break
+//!   that tie rule (two layers of equal coverage and different colour), so adding colour means choosing
+//!   another operator on purpose.
 //!
 //! [`GlyphLattice::regularity`] reports the Jacobian of the map (`det J <= 0`: folded or inverted
 //! somewhere), the caller's measure of how hard the lattice is deformed.
@@ -897,8 +901,12 @@ mod tests {
             let at = src
                 .find("    int contourCount = int(meta.y);")
                 .expect("evaluation start");
-            src[at..].into()
+            let end = "    fragColor = mix(uBgColor, uFgColor, coverage);\n";
+            let to = src.find(end).expect("evaluation end") + end.len();
+            src[at..to].into()
         };
+        // the most ink wins where layers overlap (see the module doc)
+        assert!(LATTICE_OUTLINE_FRAG_GLSL.contains("gl_FragDepth = 1.0 - coverage;"));
         assert_eq!(
             tail(LATTICE_OUTLINE_FRAG_GLSL),
             tail(MULTI_OUTLINE_FRAG_GLSL)
