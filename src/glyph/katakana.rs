@@ -225,7 +225,8 @@ fn build_i() -> GlyphSkeleton {
 }
 
 fn build_u() -> GlyphSkeleton {
-    // ウ — 3 strokes: top tick + horizontal-hook + vertical
+    // ウ — the top tick, the top stroke, the short left side, and the right side that sweeps down to the lower
+    // left (read against BIZ UDPGothic's outline: there is no vertical through the middle)
     let mut s = GlyphSkeleton::empty();
     s.advance = KANA_ADVANCE;
     s.add_stroke(Stroke::line(
@@ -240,11 +241,12 @@ fn build_u() -> GlyphSkeleton {
         Point2::new(0.18, 0.68),
         Point2::new(0.18, 0.45),
     ));
-    s.add_stroke(Stroke::line(
+    s.add_stroke(Stroke::new(
         Point2::new(0.82, 0.68),
-        Point2::new(0.82, 0.45),
+        Point2::new(0.82, 0.42),
+        Point2::new(0.7, 0.2),
+        Point2::new(0.35, 0.1),
     ));
-    s.add_stroke(Stroke::line(Point2::new(0.5, 0.6), Point2::new(0.48, 0.1)));
     s
 }
 

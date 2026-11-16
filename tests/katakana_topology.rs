@@ -5,7 +5,7 @@
 //! (the font is under the SIL OFL 1.1), and each stroke's start and end were read off
 //! that overlay as one of nine cells: columns a, b, c from the left, rows 1, 2, 3 from the top, the em
 //! box split in thirds. Overlay sheet of 2026-11-17, after the fixes to ク, リ, ツ, ユ, オ, カ, サ, シ,
-//! ム, ヤ, ヒ and チ that the same overlay showed.
+//! ム, ヤ, ヒ, チ and ウ that the same overlay showed.
 //!
 //! What it sees: a missing or extra stroke, a stroke that starts or ends in the wrong part of the glyph,
 //! and a stroke drawn in reverse (the start and end cells swap).
@@ -25,7 +25,7 @@ const MARGIN: f32 = 0.06;
 const TOPOLOGY: &[(char, &str)] = &[
     ('ア', "a1>c1 c1>b3 b2>a3"),
     ('イ', "c1>a2 b2>b3"),
-    ('ウ', "b1>b1 a1>c1 a1>a2 c1>c2 b2>b3"),
+    ('ウ', "b1>b1 a1>c1 a1>a2 c1>b3"),
     ('エ', "a1>c1 b1>b3 a3>c3"),
     ('オ', "a1>c1 b1>b3 b3>a3 b2>a3"),
     ('カ', "a1>c1 c1>b3 b1>a3"),
