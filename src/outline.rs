@@ -46,6 +46,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
+pub mod lattice;
 mod raster;
 pub use raster::{
     rasterize, RasterizeError, RASTER_MAX_CONTOURS, RASTER_MAX_PIECES, RASTER_MAX_POINTS,
