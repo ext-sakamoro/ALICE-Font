@@ -117,6 +117,49 @@ pub struct SkeletonGlyph {
     pub pen_width: f32,
 }
 
+impl SkeletonGlyph {
+    /// The packed form of a glyph's skeleton (a [`GlyphSkeleton`](crate::glyph::GlyphSkeleton) of the glyph
+    /// dispatcher: ASCII, kana or kanji), every stroke drawn with the pen half-width `pen` (em). Strokes past
+    /// [`MAX_GLYPH_STROKES`] are not kept (the skeleton has no more)
+    #[must_use]
+    pub fn from_skeleton(
+        codepoint: char,
+        skeleton: &crate::glyph::GlyphSkeleton,
+        pen: f32,
+    ) -> Self {
+        let count = skeleton.stroke_count.min(MAX_GLYPH_STROKES);
+        let mut strokes = [Stroke::line(crate::stroke::Point2::ZERO, crate::stroke::Point2::ZERO);
+            MAX_GLYPH_STROKES];
+        strokes[..count].copy_from_slice(&skeleton.strokes[..count]);
+        Self {
+            codepoint,
+            strokes,
+            stroke_widths: [(pen, pen); MAX_GLYPH_STROKES],
+            stroke_count: count,
+            advance: skeleton.advance,
+            pen_width: pen,
+        }
+    }
+}
+
+/// A provider for [`pack_skeleton_string`] over every character the glyph dispatcher has a skeleton for (ASCII,
+/// kana, kanji), each stroke drawn with the font's own pen for `params` ([`MetaFontParams::stroke_half_width`],
+/// the half-width the weight gives). `None` for a character with no skeleton
+///
+/// [`MetaFontParams::stroke_half_width`]: crate::param::MetaFontParams::stroke_half_width
+pub fn skeleton_lookup(
+    params: &crate::param::MetaFontParams,
+) -> impl Fn(char) -> Option<SkeletonGlyph> + '_ {
+    move |ch| {
+        let skeleton = crate::glyph::dispatcher::skeleton(ch, params)?;
+        Some(SkeletonGlyph::from_skeleton(
+            ch,
+            &skeleton,
+            params.stroke_half_width(),
+        ))
+    }
+}
+
 /// 単一 glyph の text layout 内配置情報 (em 座標)。
 #[derive(Debug, Clone, Copy)]
 pub struct SkeletonGlyphLayout {
