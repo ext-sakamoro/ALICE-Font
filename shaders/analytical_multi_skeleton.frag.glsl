@@ -1,4 +1,3 @@
-#version 300 es
 // ALICE-Font S6.4 v0.7.2-alpha — parametric skeleton fragment shader (variable-width pen)
 //
 // v0.7.2-alpha 変更: per-stroke variable pen width (書道 taper 表現)。
@@ -24,21 +23,11 @@
 // procedurally 生成した Bezier control points + variable widths、
 // texture upload 0 byte。
 //
+// `#version 300 es`, `precision highp float;` and shaders/skeleton_distance.glsl (the UBO block, the stroke
+// distance) come before this file: `skeleton_shader::MULTI_SKELETON_FRAG_GLSL` puts them together.
+//
 // SPDX-License-Identifier: LicenseRef-Proprietary
 // Author: Moroya Sakamoto
-
-precision highp float;
-
-const int MAX_GLYPHS = 4;
-const int MAX_STROKES_PER_GLYPH = 16;
-const int VEC4_PER_STROKE = 3; // v0.7.2: 2 → 3 (+ width vec4)
-const int BEZIER_SAMPLES = 12;
-
-layout(std140) uniform MultiSkeletonBlock {
-    vec4 uStrokes[MAX_GLYPHS * MAX_STROKES_PER_GLYPH * VEC4_PER_STROKE];
-    vec4 uGlyphMetas[MAX_GLYPHS];
-    vec4 uTextMeta;
-};
 
 uniform vec4 uFgColor;
 uniform vec4 uBgColor;
@@ -48,53 +37,10 @@ flat in int vGlyphIdx;
 in vec2 vUV;
 out vec4 fragColor;
 
-vec2 bezierAt(vec2 p0, vec2 p1, vec2 p2, vec2 p3, float t) {
-    float u = 1.0 - t;
-    float u2 = u * u;
-    float u3 = u2 * u;
-    float t2 = t * t;
-    float t3 = t2 * t;
-    return u3 * p0 + 3.0 * u2 * t * p1 + 3.0 * u * t2 * p2 + t3 * p3;
-}
-
-// Return (min_dist, best_t) — polyline approximation with t tracking。
-vec2 sdBezierApproxT(vec2 p, vec2 p0, vec2 p1, vec2 p2, vec2 p3) {
-    float minD = 1e10;
-    float bestT = 0.0;
-    vec2 prev = p0;
-    for (int i = 1; i <= BEZIER_SAMPLES; i++) {
-        float ti = float(i) / float(BEZIER_SAMPLES);
-        vec2 curr = bezierAt(p0, p1, p2, p3, ti);
-        vec2 ba = curr - prev;
-        vec2 pa = p - prev;
-        float baLen2 = dot(ba, ba);
-        float segT = 0.0;
-        float d;
-        if (baLen2 < 1e-12) {
-            d = length(pa);
-        } else {
-            segT = clamp(dot(pa, ba) / baLen2, 0.0, 1.0);
-            d = length(pa - ba * segT);
-        }
-        if (d < minD) {
-            minD = d;
-            // Bezier t at this closest point = mix of prev sample's t and curr's t
-            float tPrev = float(i - 1) / float(BEZIER_SAMPLES);
-            bestT = mix(tPrev, ti, segT);
-        }
-        prev = curr;
-    }
-    return vec2(minD, bestT);
-}
-
 void main() {
     vec2 p = vUV;
     int glyphIdx = vGlyphIdx;
-    vec4 meta = uGlyphMetas[glyphIdx];
-    int strokeCount = int(meta.y);
-    float defaultPen = meta.w;
-
-    int strokeBase = glyphIdx * MAX_STROKES_PER_GLYPH * VEC4_PER_STROKE;
+    int strokeCount = skeletonStrokeCount(glyphIdx);
 
     float maxCoverage = 0.0;
     float aa = uAntiAlias;
@@ -103,25 +49,10 @@ void main() {
         if (s >= strokeCount) {
             break;
         }
-        // Fetch 3 vec4 for this stroke (v0.7.2)
-        int base = strokeBase + s * VEC4_PER_STROKE;
-        vec4 v01 = uStrokes[base + 0];
-        vec4 v23 = uStrokes[base + 1];
-        vec4 vw = uStrokes[base + 2]; // (w_start, w_end, 0, 0)
-        vec2 p0 = v01.xy;
-        vec2 p1 = v01.zw;
-        vec2 p2 = v23.xy;
-        vec2 p3 = v23.zw;
-        float wStart = vw.x;
-        float wEnd = vw.y;
-        // Fallback: if widths are 0 (uninitialized), use defaultPen
-        if (wStart < 1e-6) wStart = defaultPen;
-        if (wEnd < 1e-6) wEnd = defaultPen;
-
-        vec2 result = sdBezierApproxT(p, p0, p1, p2, p3);
-        float d = result.x;
-        float t = result.y;
-        float penW = mix(wStart, wEnd, t);
+        // (the distance to the stroke's centre line, its pen there): shaders/skeleton_distance.glsl
+        vec2 dw = skeletonStroke(p, glyphIdx, s);
+        float d = dw.x;
+        float penW = dw.y;
 
         float cov = 1.0 - smoothstep(penW - aa, penW + aa, d);
         maxCoverage = max(maxCoverage, cov);
