@@ -306,6 +306,141 @@ where
 // Tests
 // ============================================================================
 
+/// GLSL `mix(x, y, a)` as the GLSL ES 3.00 spec defines it
+fn glsl_mix(x: f32, y: f32, a: f32) -> f32 {
+    x * (1.0 - a) + y * a
+}
+
+fn glsl_length(x: f32, y: f32) -> f32 {
+    alice_det_math::ops::sqrt(x * x + y * y)
+}
+
+fn bezier_at(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], t: f32) -> [f32; 2] {
+    let u = 1.0 - t;
+    let u2 = u * u;
+    let u3 = u2 * u;
+    let t2 = t * t;
+    let t3 = t2 * t;
+    // `u3 * p0 + 3.0 * u2 * t * p1 + 3.0 * u * t2 * p2 + t3 * p3`, each product left to right
+    let a1 = 3.0 * u2 * t;
+    let a2 = 3.0 * u * t2;
+    [
+        u3 * p0[0] + a1 * p1[0] + a2 * p2[0] + t3 * p3[0],
+        u3 * p0[1] + a1 * p1[1] + a2 * p2[1] + t3 * p3[1],
+    ]
+}
+
+/// (the least distance from `p` to the stroke's 12-piece polyline, the Bezier t of that closest point)
+fn sd_bezier_approx_t(
+    p: [f32; 2],
+    p0: [f32; 2],
+    p1: [f32; 2],
+    p2: [f32; 2],
+    p3: [f32; 2],
+) -> (f32, f32) {
+    let mut min_d = 1e10_f32;
+    let mut best_t = 0.0_f32;
+    let mut prev = p0;
+    for i in 1..=BEZIER_SAMPLES {
+        let ti = i as f32 / BEZIER_SAMPLES as f32;
+        let curr = bezier_at(p0, p1, p2, p3, ti);
+        let ba = [curr[0] - prev[0], curr[1] - prev[1]];
+        let pa = [p[0] - prev[0], p[1] - prev[1]];
+        let ba_len2 = ba[0] * ba[0] + ba[1] * ba[1];
+        let mut seg_t = 0.0_f32;
+        let d = if ba_len2 < 1e-12 {
+            glsl_length(pa[0], pa[1])
+        } else {
+            seg_t = crate::law_float::law_clamp_f32(
+                (pa[0] * ba[0] + pa[1] * ba[1]) / ba_len2,
+                0.0,
+                1.0,
+            );
+            glsl_length(pa[0] - ba[0] * seg_t, pa[1] - ba[1] * seg_t)
+        };
+        if d < min_d {
+            min_d = d;
+            let t_prev = (i - 1) as f32 / BEZIER_SAMPLES as f32;
+            best_t = glsl_mix(t_prev, ti, seg_t);
+        }
+        prev = curr;
+    }
+    (min_d, best_t)
+}
+
+/// How many strokes glyph `glyph` of a std140 chunk has, as the GPU reads it (`int(uGlyphMetas[glyph].y)`); `None`
+/// for a chunk that is not [`MULTI_SKELETON_UBO_SIZE`] bytes or a glyph past [`MULTI_SKELETON_MAX_GLYPHS`]
+#[must_use]
+pub fn skeleton_stroke_count(chunk: &[u8], glyph: usize) -> Option<usize> {
+    if chunk.len() != MULTI_SKELETON_UBO_SIZE || glyph >= MULTI_SKELETON_MAX_GLYPHS {
+        return None;
+    }
+    let metas = MULTI_SKELETON_STROKES_AREA_SIZE / 16;
+    // GLSL `int(f)` truncates toward zero; a negative or NaN count draws nothing
+    let n = read_f32(chunk, metas + glyph, 1);
+    Some(if n >= 1.0 { n as usize } else { 0 })
+}
+
+/// Stroke `stroke` of glyph `glyph` of a std140 chunk (one of [`MultiSkeletonGlyphPayload::to_std140_ubo_chunks`]),
+/// seen from `p` (the glyph's em units): `[the distance to its centre line, its pen half-width there]`, as
+/// `skeletonStroke` computes it. `None` for a malformed chunk or an index past the chunk's glyphs or strokes
+#[must_use]
+pub fn skeleton_stroke(chunk: &[u8], glyph: usize, stroke: usize, p: [f32; 2]) -> Option<[f32; 2]> {
+    if chunk.len() != MULTI_SKELETON_UBO_SIZE
+        || glyph >= MULTI_SKELETON_MAX_GLYPHS
+        || stroke >= MULTI_SKELETON_MAX_STROKES_PER_GLYPH
+    {
+        return None;
+    }
+    let metas = MULTI_SKELETON_STROKES_AREA_SIZE / 16;
+    let default_pen = read_f32(chunk, metas + glyph, 3);
+    let base =
+        glyph * MULTI_SKELETON_MAX_STROKES_PER_GLYPH * VEC4_PER_STROKE + stroke * VEC4_PER_STROKE;
+    let p0 = [read_f32(chunk, base, 0), read_f32(chunk, base, 1)];
+    let p1 = [read_f32(chunk, base, 2), read_f32(chunk, base, 3)];
+    let p2 = [read_f32(chunk, base + 1, 0), read_f32(chunk, base + 1, 1)];
+    let p3 = [read_f32(chunk, base + 1, 2), read_f32(chunk, base + 1, 3)];
+    let mut w_start = read_f32(chunk, base + 2, 0);
+    let mut w_end = read_f32(chunk, base + 2, 1);
+    if w_start < 1e-6 {
+        w_start = default_pen;
+    }
+    if w_end < 1e-6 {
+        w_end = default_pen;
+    }
+    let (d, t) = sd_bezier_approx_t(p, p0, p1, p2, p3);
+    Some([d, glsl_mix(w_start, w_end, t)])
+}
+
+/// Glyph `glyph`'s signed distance at `p` (em units), as `skeletonDistance` computes it: the least over its strokes
+/// of the distance to the centre line less the pen there, negative inside; `1e10` for a glyph with no strokes.
+/// `None` for a malformed chunk or a glyph past [`MULTI_SKELETON_MAX_GLYPHS`]
+#[must_use]
+pub fn skeleton_distance(chunk: &[u8], glyph: usize, p: [f32; 2]) -> Option<f32> {
+    let count = skeleton_stroke_count(chunk, glyph)?.min(MULTI_SKELETON_MAX_STROKES_PER_GLYPH);
+    let mut best = 1e10_f32;
+    for s in 0..count {
+        let [d, pen] = skeleton_stroke(chunk, glyph, s, p)?;
+        best = crate::law_float::law_min_f32(best, d - pen);
+    }
+    Some(best)
+}
+
+// ── The skeleton as a distance: the Rust twin of shaders/skeleton_distance.glsl ──────────────────────────────────
+//
+// The same operations in the same order as the GLSL, on the same std140 numbers the GPU reads, so the field a CPU
+// reads (a drop landing in a groove, a ball rolling into it) is the field the GPU draws. GLSL evaluates `a * b * c`
+// left to right and defines `mix(x, y, a)` as `x * (1 - a) + y * a`; both are written out that way here. The square
+// root is alice-det-math's (correctly rounded); a GPU's `length` and division are within the precision GLSL ES
+// allows, so the two agree to a stated tolerance, not bit for bit (tests/skeleton_distance.rs).
+
+const BEZIER_SAMPLES: usize = 12;
+
+fn read_f32(chunk: &[u8], vec4: usize, lane: usize) -> f32 {
+    let at = vec4 * 16 + lane * 4;
+    f32::from_le_bytes([chunk[at], chunk[at + 1], chunk[at + 2], chunk[at + 3]])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -483,139 +618,4 @@ mod tests {
         assert!(MULTI_SKELETON_VERT_GLSL.contains("gl_InstanceID"));
         assert!(MULTI_SKELETON_FRAG_GLSL.contains("smoothstep(penW - aa, penW + aa, d)"));
     }
-}
-
-// ── The skeleton as a distance: the Rust twin of shaders/skeleton_distance.glsl ──────────────────────────────────
-//
-// The same operations in the same order as the GLSL, on the same std140 numbers the GPU reads, so the field a CPU
-// reads (a drop landing in a groove, a ball rolling into it) is the field the GPU draws. GLSL evaluates `a * b * c`
-// left to right and defines `mix(x, y, a)` as `x * (1 - a) + y * a`; both are written out that way here. The square
-// root is alice-det-math's (correctly rounded); a GPU's `length` and division are within the precision GLSL ES
-// allows, so the two agree to a stated tolerance, not bit for bit (tests/skeleton_distance.rs).
-
-const BEZIER_SAMPLES: usize = 12;
-
-fn read_f32(chunk: &[u8], vec4: usize, lane: usize) -> f32 {
-    let at = vec4 * 16 + lane * 4;
-    f32::from_le_bytes([chunk[at], chunk[at + 1], chunk[at + 2], chunk[at + 3]])
-}
-
-/// GLSL `mix(x, y, a)` as the GLSL ES 3.00 spec defines it
-fn glsl_mix(x: f32, y: f32, a: f32) -> f32 {
-    x * (1.0 - a) + y * a
-}
-
-fn glsl_length(x: f32, y: f32) -> f32 {
-    alice_det_math::ops::sqrt(x * x + y * y)
-}
-
-fn bezier_at(p0: [f32; 2], p1: [f32; 2], p2: [f32; 2], p3: [f32; 2], t: f32) -> [f32; 2] {
-    let u = 1.0 - t;
-    let u2 = u * u;
-    let u3 = u2 * u;
-    let t2 = t * t;
-    let t3 = t2 * t;
-    // `u3 * p0 + 3.0 * u2 * t * p1 + 3.0 * u * t2 * p2 + t3 * p3`, each product left to right
-    let a1 = 3.0 * u2 * t;
-    let a2 = 3.0 * u * t2;
-    [
-        u3 * p0[0] + a1 * p1[0] + a2 * p2[0] + t3 * p3[0],
-        u3 * p0[1] + a1 * p1[1] + a2 * p2[1] + t3 * p3[1],
-    ]
-}
-
-/// (the least distance from `p` to the stroke's 12-piece polyline, the Bezier t of that closest point)
-fn sd_bezier_approx_t(
-    p: [f32; 2],
-    p0: [f32; 2],
-    p1: [f32; 2],
-    p2: [f32; 2],
-    p3: [f32; 2],
-) -> (f32, f32) {
-    let mut min_d = 1e10_f32;
-    let mut best_t = 0.0_f32;
-    let mut prev = p0;
-    for i in 1..=BEZIER_SAMPLES {
-        let ti = i as f32 / BEZIER_SAMPLES as f32;
-        let curr = bezier_at(p0, p1, p2, p3, ti);
-        let ba = [curr[0] - prev[0], curr[1] - prev[1]];
-        let pa = [p[0] - prev[0], p[1] - prev[1]];
-        let ba_len2 = ba[0] * ba[0] + ba[1] * ba[1];
-        let mut seg_t = 0.0_f32;
-        let d = if ba_len2 < 1e-12 {
-            glsl_length(pa[0], pa[1])
-        } else {
-            seg_t = crate::law_float::law_clamp_f32(
-                (pa[0] * ba[0] + pa[1] * ba[1]) / ba_len2,
-                0.0,
-                1.0,
-            );
-            glsl_length(pa[0] - ba[0] * seg_t, pa[1] - ba[1] * seg_t)
-        };
-        if d < min_d {
-            min_d = d;
-            let t_prev = (i - 1) as f32 / BEZIER_SAMPLES as f32;
-            best_t = glsl_mix(t_prev, ti, seg_t);
-        }
-        prev = curr;
-    }
-    (min_d, best_t)
-}
-
-/// How many strokes glyph `glyph` of a std140 chunk has, as the GPU reads it (`int(uGlyphMetas[glyph].y)`); `None`
-/// for a chunk that is not [`MULTI_SKELETON_UBO_SIZE`] bytes or a glyph past [`MULTI_SKELETON_MAX_GLYPHS`]
-#[must_use]
-pub fn skeleton_stroke_count(chunk: &[u8], glyph: usize) -> Option<usize> {
-    if chunk.len() != MULTI_SKELETON_UBO_SIZE || glyph >= MULTI_SKELETON_MAX_GLYPHS {
-        return None;
-    }
-    let metas = MULTI_SKELETON_STROKES_AREA_SIZE / 16;
-    // GLSL `int(f)` truncates toward zero; a negative or NaN count draws nothing
-    let n = read_f32(chunk, metas + glyph, 1);
-    Some(if n >= 1.0 { n as usize } else { 0 })
-}
-
-/// Stroke `stroke` of glyph `glyph` of a std140 chunk (one of [`MultiSkeletonGlyphPayload::to_std140_ubo_chunks`]),
-/// seen from `p` (the glyph's em units): `[the distance to its centre line, its pen half-width there]`, as
-/// `skeletonStroke` computes it. `None` for a malformed chunk or an index past the chunk's glyphs or strokes
-#[must_use]
-pub fn skeleton_stroke(chunk: &[u8], glyph: usize, stroke: usize, p: [f32; 2]) -> Option<[f32; 2]> {
-    if chunk.len() != MULTI_SKELETON_UBO_SIZE
-        || glyph >= MULTI_SKELETON_MAX_GLYPHS
-        || stroke >= MULTI_SKELETON_MAX_STROKES_PER_GLYPH
-    {
-        return None;
-    }
-    let metas = MULTI_SKELETON_STROKES_AREA_SIZE / 16;
-    let default_pen = read_f32(chunk, metas + glyph, 3);
-    let base =
-        glyph * MULTI_SKELETON_MAX_STROKES_PER_GLYPH * VEC4_PER_STROKE + stroke * VEC4_PER_STROKE;
-    let p0 = [read_f32(chunk, base, 0), read_f32(chunk, base, 1)];
-    let p1 = [read_f32(chunk, base, 2), read_f32(chunk, base, 3)];
-    let p2 = [read_f32(chunk, base + 1, 0), read_f32(chunk, base + 1, 1)];
-    let p3 = [read_f32(chunk, base + 1, 2), read_f32(chunk, base + 1, 3)];
-    let mut w_start = read_f32(chunk, base + 2, 0);
-    let mut w_end = read_f32(chunk, base + 2, 1);
-    if w_start < 1e-6 {
-        w_start = default_pen;
-    }
-    if w_end < 1e-6 {
-        w_end = default_pen;
-    }
-    let (d, t) = sd_bezier_approx_t(p, p0, p1, p2, p3);
-    Some([d, glsl_mix(w_start, w_end, t)])
-}
-
-/// Glyph `glyph`'s signed distance at `p` (em units), as `skeletonDistance` computes it: the least over its strokes
-/// of the distance to the centre line less the pen there, negative inside; `1e10` for a glyph with no strokes.
-/// `None` for a malformed chunk or a glyph past [`MULTI_SKELETON_MAX_GLYPHS`]
-#[must_use]
-pub fn skeleton_distance(chunk: &[u8], glyph: usize, p: [f32; 2]) -> Option<f32> {
-    let count = skeleton_stroke_count(chunk, glyph)?.min(MULTI_SKELETON_MAX_STROKES_PER_GLYPH);
-    let mut best = 1e10_f32;
-    for s in 0..count {
-        let [d, pen] = skeleton_stroke(chunk, glyph, s, p)?;
-        best = crate::law_float::law_min_f32(best, d - pen);
-    }
-    Some(best)
 }

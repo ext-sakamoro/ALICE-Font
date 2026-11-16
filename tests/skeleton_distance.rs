@@ -13,8 +13,11 @@ use alice_font::skeleton_shader::{
     VEC4_PER_STROKE,
 };
 
-/// A chunk with one glyph (glyph 0) whose strokes are given as (p0, p1, p2, p3, w_start, w_end), default pen `pen`
-fn chunk(strokes: &[([f32; 2], [f32; 2], [f32; 2], [f32; 2], f32, f32)], pen: f32) -> Vec<u8> {
+/// One stroke: (p0, p1, p2, p3, w_start, w_end)
+type StrokeRow = ([f32; 2], [f32; 2], [f32; 2], [f32; 2], f32, f32);
+
+/// A chunk with one glyph (glyph 0) whose strokes are given as rows, default pen `pen`
+fn chunk(strokes: &[StrokeRow], pen: f32) -> Vec<u8> {
     let mut c = vec![0u8; MULTI_SKELETON_UBO_SIZE];
     let put = |c: &mut Vec<u8>, vec4: usize, lane: usize, v: f32| {
         let at = vec4 * 16 + lane * 4;
