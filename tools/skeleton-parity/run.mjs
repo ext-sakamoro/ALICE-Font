@@ -23,7 +23,8 @@ const before = fs.readFileSync(beforePath, "utf8");
 const engine = { chromium, webkit, firefox }[engineName];
 if (!engine) throw new Error(`unknown engine ${engineName}`);
 
-const browser = await engine.launch({ args });
+// PW_CHANNEL (e.g. "chromium") selects the new headless mode where a GPU needs it
+const browser = await engine.launch({ args, ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}) });
 const page = await browser.newPage();
 await page.setContent("<!doctype html><canvas id=c width=8 height=8></canvas>");
 const result = await page.evaluate(({ data, before }) => {
