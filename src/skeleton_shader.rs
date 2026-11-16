@@ -89,7 +89,8 @@ pub const MULTI_SKELETON_FRAG_GLSL: &str = concat!(
     "#version 300 es\n",
     "precision highp float;\n",
     // without it a fragment stage's `int` is mediump: `float(i)` of a loop index or a count can then be
-    // computed in half precision (measured on one GPU: 4-18/255 off the CPU reference)
+    // computed in half precision (measured on a desktop discrete GPU through ANGLE Vulkan: 4-18/255 off the CPU
+    // reference without it)
     "precision highp int;\n",
     include_str!("../shaders/skeleton_distance.glsl"),
     include_str!("../shaders/analytical_multi_skeleton.frag.glsl"),

@@ -10,7 +10,8 @@
 //   node run.mjs <parity.json> <before.frag.glsl> <chromium|webkit|firefox> [launch args...]
 //
 // Needs `playwright` resolvable from the working directory (NODE_PATH or a local node_modules). Prints one JSON
-// object; exits 1 when the page could not be driven or a comparison compared nothing.
+// object; exits 1 when the page could not be driven, a comparison compared nothing, the refactor's bytes differ, or
+// the distance differs in sign or by more than the derived bound (DISTANCE_BOUND_EM below).
 //
 // Author: Moroya Sakamoto
 
@@ -152,6 +153,16 @@ const result = await page.evaluate(({ data, before }) => {
 }, { data, before });
 await browser.close();
 console.log(JSON.stringify({ engine: engineName, ...result }));
-const ok = !result.error && result.coverage?.refactor.bytes > 0 && result.coverage.refactor.lit_pixels > 0
+// The judgements, not only the measurements:
+//   the refactor is exact: "before" and "after without int precision" must be byte-equal
+//   the distance: no sign may differ, and |GPU - CPU| <= DISTANCE_BOUND_EM. The bound is derived, not tuned: the
+//   distance is about 8 f32 operations on values of at most 1.5 em (the polyline's point-segment distance, the
+//   interpolated pen, a sqrt), each off by at most one ulp of 1.5 em (1.19e-7), so 8 x 1.19e-7 = 9.5e-7 em
+const DISTANCE_BOUND_EM = 9.5e-7;
+const compared = !result.error && result.coverage?.refactor.bytes > 0 && result.coverage.refactor.lit_pixels > 0
   && result.distance?.compared > 0;
-process.exit(ok ? 0 : 1);
+const refactorExact = compared && result.coverage.refactor.differ === 0;
+const distanceWithin = compared && result.distance.sign_differ === 0 && result.distance.max_abs_em <= DISTANCE_BOUND_EM;
+if (compared && !refactorExact) console.error(`FAIL refactor: ${result.coverage.refactor.differ} bytes differ`);
+if (compared && !distanceWithin) console.error(`FAIL distance: max ${result.distance.max_abs_em} em (bound ${DISTANCE_BOUND_EM}), ${result.distance.sign_differ} signs differ`);
+process.exit(compared && refactorExact && distanceWithin ? 0 : 1);
