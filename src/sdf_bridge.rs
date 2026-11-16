@@ -53,6 +53,10 @@ pub fn stroke_to_sdf2d(stroke: &Stroke, thickness: f32) -> Sdf2dNode {
 /// これは「どの点も外部」の SDF (常に正) として振る舞う
 ///
 /// `thickness` は全 stroke 共通、將来 stroke ごとの width profile 対応は A.3.1 で追加
+///
+/// One thickness for every stroke: the lesser path. The skeleton's own distance, with each stroke's pen
+/// interpolated along it, is [`crate::skeleton_shader::skeleton_distance`] (and `skeletonDistance` in
+/// `shaders/skeleton_distance.glsl`, the same arithmetic on the GPU)
 #[must_use]
 pub fn glyph_skeleton_to_sdf2d(skeleton: &GlyphSkeleton, thickness: f32) -> Sdf2dNode {
     if skeleton.stroke_count == 0 {

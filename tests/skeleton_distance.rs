@@ -241,3 +241,45 @@ fn the_text_shader_is_built_on_the_distance_chunk() {
     );
     assert!(!directive("precision "), "and the precision");
 }
+
+#[test]
+fn the_dispatcher_provider_packs_kana_and_kanji_with_the_fonts_own_pen() {
+    use alice_font::param::MetaFontParams;
+    use alice_font::skeleton_shader::skeleton_lookup;
+    let text = "株式会社エクストーリア";
+    let params = MetaFontParams::sans_regular();
+    let payload = pack_skeleton_string(text, skeleton_lookup(&params)).expect("the string packs");
+    assert_eq!(
+        payload.glyph_count(),
+        text.chars().count(),
+        "every character has a skeleton"
+    );
+    // dsl_lookup knows a few radicals only: the same string through it keeps none of these
+    let dsl = pack_skeleton_string(text, dsl_lookup).map_or(0, |p| p.glyph_count());
+    assert!(dsl < text.chars().count(), "{dsl}");
+    // oracle: the pen is the half-width the weight gives (0.01 + 0.08 weight)
+    let pen = 0.01 + 0.08 * params.weight;
+    for g in &payload.glyphs {
+        assert!(g.stroke_count > 0, "{}", g.codepoint);
+        assert_eq!(g.pen_width.to_bits(), pen.to_bits(), "{}", g.codepoint);
+        assert!(g.stroke_widths[..g.stroke_count]
+            .iter()
+            .all(|w| w.0 == pen && w.1 == pen));
+    }
+    // a heavier weight gives a wider pen, so the glyph's distance at a stroke's middle goes down
+    let heavy = MetaFontParams {
+        weight: 0.7,
+        ..params
+    };
+    let thin = pack_skeleton_string("三", skeleton_lookup(&params))
+        .expect("packs")
+        .to_std140_ubo_chunks();
+    let bold = pack_skeleton_string("三", skeleton_lookup(&heavy))
+        .expect("packs")
+        .to_std140_ubo_chunks();
+    let p = [0.5, 0.5];
+    assert!(
+        skeleton_distance(&bold[0], 0, p).expect("glyph")
+            < skeleton_distance(&thin[0], 0, p).expect("glyph")
+    );
+}
