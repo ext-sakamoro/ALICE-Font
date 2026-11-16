@@ -96,6 +96,8 @@ impl fmt::Display for LatticeError {
     }
 }
 
+impl core::error::Error for LatticeError {}
+
 /// One triangle of a glyph's lattice mesh, in the glyph's box coordinates
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LatticeTriangle {
